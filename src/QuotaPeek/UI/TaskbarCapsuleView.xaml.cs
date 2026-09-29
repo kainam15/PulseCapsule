@@ -16,12 +16,41 @@ public partial class TaskbarCapsuleView : UserControl
 
     public TaskbarCapsuleView() => InitializeComponent();
 
-    public void Update(string name, string value, Brush status, string tooltip)
+    public void Update(string name, string value, Brush status, string tooltip, bool clock = false)
     {
-        ProviderText.Text = name;
-        BalanceText.Text = value;
         StatusDot.Fill = status;
-        ToolTip = tooltip + "\n滚轮切换钱包 / 额度 · 单击展开 / 收起 · 右键打开菜单";
+        if (clock)
+        {
+            StatusDot.Visibility = Visibility.Collapsed;
+            BalanceText.Visibility = Visibility.Collapsed;
+            ProviderText.Visibility = Visibility.Visible;
+            ProviderText.Text = value;
+            Grid.SetColumn(ProviderText, 0);
+            Grid.SetColumnSpan(ProviderText, 3);
+            ProviderText.HorizontalAlignment = HorizontalAlignment.Center;
+            ProviderText.TextAlignment = TextAlignment.Center;
+            ProviderText.FontSize = 14;
+            TaskbarMenuButton.Visibility = Visibility.Collapsed;
+            TaskbarMenuColumn.Width = new GridLength(0);
+            TaskbarExpandButton.Padding = new Thickness(0);
+        }
+        else
+        {
+            StatusDot.Visibility = Visibility.Visible;
+            ProviderText.Visibility = Visibility.Visible;
+            BalanceText.Visibility = Visibility.Visible;
+            ProviderText.Text = name;
+            BalanceText.Text = value;
+            Grid.SetColumn(ProviderText, 1);
+            Grid.SetColumnSpan(ProviderText, 1);
+            ProviderText.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ProviderText.TextAlignment = TextAlignment.Left;
+            ProviderText.FontSize = 12;
+            TaskbarMenuButton.Visibility = Visibility.Visible;
+            TaskbarMenuColumn.Width = new GridLength(26);
+            TaskbarExpandButton.Padding = new Thickness(6, 0, 6, 0);
+        }
+        ToolTip = tooltip + "\n滚轮切换时间 / 钱包 / 额度 · 单击展开 / 收起 · 右键打开菜单";
     }
 
     private void Expand_Click(object sender, RoutedEventArgs e) => ToggleRequested?.Invoke();

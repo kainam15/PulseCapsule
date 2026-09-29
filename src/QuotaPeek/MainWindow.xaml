@@ -7,13 +7,13 @@
     <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="2" Opacity="0.26"/></Border.Effect>
     <Border.ContextMenu><ContextMenu StaysOpen="False" Opened="ContextMenu_Opened"><MenuItem x:Name="TaskbarDockMenu" Header="嵌入左下角任务栏" IsCheckable="True" Click="TaskbarDock_Click"/><Separator/><MenuItem Header="设置" Click="Settings_Click"/><MenuItem Header="刷新" Click="Refresh_Click"/><MenuItem Header="锁定 / 解锁鼠标穿透" Click="Lock_Click"/><Separator/><MenuItem Header="退出 QuotaPeek" Click="Exit_Click"/></ContextMenu></Border.ContextMenu>
     <Grid>
-      <Grid x:Name="Capsule" Visibility="Collapsed" Height="48" Margin="12,0,10,0" Background="Transparent" ToolTip="滚轮切换钱包 / 额度 · 单击展开 · 按住拖动">
+      <Grid x:Name="Capsule" Visibility="Collapsed" Height="48" Margin="12,0,10,0" Background="Transparent" ToolTip="滚轮切换时间 / 钱包 / 额度 · 单击展开 · 按住拖动">
         <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
         <Ellipse x:Name="CapsuleDot" Width="7" Height="7" Fill="{StaticResource Mint}"/>
         <Button x:Name="ExpandButton" Grid.Column="1" Background="Transparent" Padding="3,0" Click="Expand_Click" AutomationProperties.Name="展开额度卡片">
           <TextBlock x:Name="CapsuleText" FontWeight="SemiBold" Text="QuotaPeek" FontSize="13" TextTrimming="CharacterEllipsis"/>
         </Button>
-        <TextBlock Grid.Column="2" FontFamily="Segoe MDL2 Assets" Text="&#xE700;" FontSize="13" Foreground="{StaticResource Muted}" VerticalAlignment="Center" HorizontalAlignment="Right"
+        <TextBlock x:Name="CapsuleGrip" Grid.Column="2" FontFamily="Segoe MDL2 Assets" Text="&#xE700;" FontSize="13" Foreground="{StaticResource Muted}" VerticalAlignment="Center" HorizontalAlignment="Right"
                    ToolTip="拖动组件"/>
       </Grid>
       <StackPanel x:Name="Expanded" Margin="18,15,18,14">

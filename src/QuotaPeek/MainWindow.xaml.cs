@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly OutsideClickMonitor outsideClicks;
     private readonly Forms.ToolStripMenuItem taskbarMenu;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(15) };
+    private readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool expanded = true, locked, userHidden, fullscreenHidden, sessionLocked, sleeping, exiting;
     private (int X, int Y)? dragFrom;
     private (double X, double Y) dragWindow;
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
     private List<CardViewModel> capsuleCards = [];
     private string? selectedProviderId, displayedProviderId;
     private int capsuleWheelDelta;
+    private bool clockSelected;
 
     public MainWindow(App app)
     {
@@ -63,6 +65,10 @@ public partial class MainWindow : Window
         taskbar.PlacementChanged += UpdateVisibility;
         app.Monitor.Changed += Render;
         app.Monitor.LowQuota += NotifyLow;
+        clockTimer.Tick += (_, _) =>
+        {
+            if (clockSelected && !exiting) RenderCapsule();
+        };
         SourceInitialized += (_, _) =>
         {
             WindowNative.Configure(this, false);
@@ -79,6 +85,7 @@ public partial class MainWindow : Window
             SetExpanded(!app.Monitor.Settings.TaskbarDocked && app.Monitor.Settings.StartExpanded, false);
             Render(); UpdateLayout();
             timer.Start();
+            clockTimer.Start();
             await app.Monitor.RefreshAsync();
             CaptureRequested();
         };
@@ -147,6 +154,37 @@ public partial class MainWindow : Window
 
     private void RenderCapsule()
     {
+        if (capsuleCards.Count == 0) clockSelected = true;
+        if (clockSelected)
+        {
+            var now = DateTime.Now;
+            var time = $"{now:yyyy-MM-dd} {now:HH:mm}";
+            var clockTooltip = now.ToString("yyyy-MM-dd dddd") + "\n本机时间";
+            displayedProviderId = null;
+            CapsuleText.Text = time;
+            CapsuleDot.Visibility = Visibility.Collapsed;
+            CapsuleGrip.Visibility = Visibility.Collapsed;
+            Grid.SetColumn(ExpandButton, 0);
+            Grid.SetColumnSpan(ExpandButton, 3);
+            ExpandButton.HorizontalContentAlignment = HorizontalAlignment.Center;
+            CapsuleText.HorizontalAlignment = HorizontalAlignment.Center;
+            CapsuleText.TextAlignment = TextAlignment.Center;
+            CapsuleText.FontSize = 15;
+            var clockBrush = (System.Windows.Media.Brush)FindResource("Muted");
+            Capsule.ToolTip = clockTooltip + "\n滚轮切换时间 / 钱包 / 额度 · 单击展开 · " + (dockMode ? "右键切换显示方式" : "按住拖动");
+            taskbar.View.Update("", time, clockBrush, clockTooltip, true);
+            return;
+        }
+
+        CapsuleDot.Visibility = Visibility.Visible;
+        CapsuleGrip.Visibility = Visibility.Visible;
+        Grid.SetColumn(ExpandButton, 1);
+        Grid.SetColumnSpan(ExpandButton, 1);
+        ExpandButton.HorizontalContentAlignment = HorizontalAlignment.Left;
+        CapsuleText.HorizontalAlignment = HorizontalAlignment.Stretch;
+        CapsuleText.TextAlignment = TextAlignment.Left;
+        CapsuleText.FontSize = 13;
+
         var selected = capsuleCards.FirstOrDefault(c => c.Config.Id == selectedProviderId);
         // Keep manual selection across refreshes; fall back if its source was disabled or removed.
         if (selected is null) selectedProviderId = null;
@@ -158,7 +196,7 @@ public partial class MainWindow : Window
         CapsuleText.Text = current is null ? "QuotaPeek · 添加账户" : current.Name + "  " + current.PrimaryValue;
         CapsuleDot.Fill = current?.StatusBrush ?? (System.Windows.Media.Brush)FindResource("Mint");
         var tooltip = string.Join("\n", capsuleCards.Select(c => c.Name + " " + c.PrimaryValue + " · " + c.StatusText));
-        Capsule.ToolTip = tooltip + "\n滚轮切换钱包 / 额度 · 单击展开 · " + (dockMode ? "右键切换显示方式" : "按住拖动");
+        Capsule.ToolTip = tooltip + "\n滚轮切换时间 / 钱包 / 额度 · 单击展开 · " + (dockMode ? "右键切换显示方式" : "按住拖动");
         taskbar.View.Update(current?.Name ?? "QuotaPeek", current?.PrimaryValue ?? "添加账户", CapsuleDot.Fill, tooltip);
     }
 
@@ -171,7 +209,8 @@ public partial class MainWindow : Window
 
     private void CycleCapsule(MouseWheelEventArgs e)
     {
-        if (locked || dragFrom is not null || capsuleCards.Count < 2 || e.Delta == 0) return;
+        var itemCount = capsuleCards.Count + 1; // Providers plus the local clock view.
+        if (locked || dragFrom is not null || itemCount < 2 || e.Delta == 0) return;
         e.Handled = true;
         // Precision wheels can send fractions of a notch. Never jump for each tiny delta.
         if (Math.Sign(capsuleWheelDelta) != Math.Sign(e.Delta)) capsuleWheelDelta = 0;
@@ -179,9 +218,10 @@ public partial class MainWindow : Window
         var steps = capsuleWheelDelta / Mouse.MouseWheelDeltaForOneLine;
         capsuleWheelDelta %= Mouse.MouseWheelDeltaForOneLine;
         if (steps == 0) return;
-        var index = Math.Max(0, capsuleCards.FindIndex(c => c.Config.Id == displayedProviderId));
-        index = ((index - steps) % capsuleCards.Count + capsuleCards.Count) % capsuleCards.Count;
-        selectedProviderId = capsuleCards[index].Config.Id;
+        var index = clockSelected ? capsuleCards.Count : Math.Max(0, capsuleCards.FindIndex(c => c.Config.Id == displayedProviderId));
+        index = ((index - steps) % itemCount + itemCount) % itemCount;
+        clockSelected = index == capsuleCards.Count;
+        if (!clockSelected) selectedProviderId = capsuleCards[index].Config.Id;
         RenderCapsule();
     }
 
@@ -366,7 +406,7 @@ public partial class MainWindow : Window
     {
         outsideClicks.Dispose();
         FinishDrag();
-        SavePosition(); timer.Stop(); taskbar.Dispose(); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
+        SavePosition(); timer.Stop(); clockTimer.Stop(); taskbar.Dispose(); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
         WindowNative.Unregister(this);
         SystemEvents.SessionSwitch -= SessionSwitch; SystemEvents.PowerModeChanged -= PowerChanged; SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         app.Monitor.Changed -= Render; app.Monitor.LowQuota -= NotifyLow;
