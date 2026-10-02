@@ -44,7 +44,7 @@ public static class CapsuleSelection
     public static List<CapsulePreference> Normalize(IEnumerable<CapsulePreference>? preferences)
     {
         string[] known = ["clock", "quota", "system"];
-        var result = (preferences ?? []).Where(p => known.Contains(p.Id)).DistinctBy(p => p.Id).ToList();
+        var result = (preferences ?? []).Where(p => p is not null && known.Contains(p.Id)).DistinctBy(p => p.Id).ToList();
         foreach (var id in known.Where(id => result.All(p => p.Id != id))) result.Add(new() { Id = id });
         if (result.All(p => !p.Enabled)) result[0].Enabled = true;
         return result;

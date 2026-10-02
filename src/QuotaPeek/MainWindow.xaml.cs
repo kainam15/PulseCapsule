@@ -155,9 +155,11 @@ public partial class MainWindow : Window
         CapsuleGrip.Visibility = !style.Centered && action is null ? Visibility.Visible : Visibility.Collapsed;
         CapsuleActionButton.Visibility = action is null ? Visibility.Collapsed : Visibility.Visible;
         CapsuleActionButton.Content = action?.Title;
+        System.Windows.Automation.AutomationProperties.SetName(CapsuleActionButton, action?.Title ?? "胶囊操作");
         CapsuleActionButton.IsEnabled = action?.Enabled == true;
         CapsuleActionButton.Tag = action?.Id;
         Grid.SetColumn(ExpandButton, style.Centered ? 0 : 1);
+        Capsule.ColumnDefinitions[0].Width = new GridLength(style.ShowStatus ? 20 : 0);
         Grid.SetColumnSpan(ExpandButton, style.Centered && action is null ? 3 : 1);
         ExpandButton.HorizontalContentAlignment = style.Centered ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         CapsuleText.TextAlignment = style.Centered ? TextAlignment.Center : TextAlignment.Left;

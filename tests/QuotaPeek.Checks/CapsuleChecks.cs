@@ -3,6 +3,7 @@ using System.Text.Json;
 using QuotaPeek.Core;
 using QuotaPeek.Capsules.SystemInfo;
 using QuotaPeek.Shell;
+using QuotaPeek.Services;
 
 static class CapsuleChecks
 {
@@ -107,6 +108,15 @@ static class CapsuleChecks
                 host.Pause(); check("host pauses every healthy capsule", good.Paused);
                 host.Resume().GetAwaiter().GetResult(); check("host resumes after lock or sleep", !good.Paused);
                 host.Configure(settings, [good]).GetAwaiter().GetResult(); check("configuration preserves selected capsule identity", host.Current == good && !good.Disposed);
+                var hidden = new FakeCapsule("hidden");
+                host.Configure(settings, [good, hidden]).GetAwaiter().GetResult();
+                var changes = 0; host.Changed += () => changes++;
+                hidden.Change(); check("background capsule sampling does not repaint the shell", changes == 0);
+                good.Change(); check("selected capsule changes repaint the shell", changes == 1);
+                good.FailRefresh = true; host.Refresh().GetAwaiter().GetResult();
+                check("refresh failure does not invalidate host enumeration", good.Disposed && hidden.Refreshes > 0 && host.Current?.Status == CapsuleStatus.Unavailable);
+                hidden.FailResume = true; host.Resume().GetAwaiter().GetResult();
+                check("resume failure does not invalidate host enumeration", hidden.Disposed && host.Capsules.All(c => c.Status == CapsuleStatus.Unavailable));
             }
             catch (Exception error) { failure = error; }
         });
@@ -131,7 +141,8 @@ static class CapsuleChecks
     }
     private sealed class FakeCapsule(string id) : ICapsule
     {
-        public bool FailInit, Disposed, Paused;
+        public bool FailInit, FailRefresh, FailResume, Disposed, Paused;
+        public int Refreshes;
         public string Id => id;
         public string Title => id;
         public string PrimaryText => id;
@@ -144,11 +155,12 @@ static class CapsuleChecks
         public CapsuleAppearance Appearance => new();
         public string StatusColor => "#A6EDCF";
         public string Footer => "";
-        public event Action? Changed { add { } remove { } }
+        public event Action? Changed;
+        public void Change() => Changed?.Invoke();
         public Task Initialize() { if (FailInit) throw new Exception("fixture"); return Task.CompletedTask; }
-        public Task Refresh(bool force = false) => Task.CompletedTask;
+        public Task Refresh(bool force = false) { Refreshes++; if (FailRefresh) throw new Exception("fixture"); return Task.CompletedTask; }
         public void Pause() => Paused = true;
-        public Task Resume() { Paused = false; return Task.CompletedTask; }
+        public Task Resume() { if (FailResume) throw new Exception("fixture"); Paused = false; return Task.CompletedTask; }
         public void Dispose() => Disposed = true;
     }
 }

@@ -6,6 +6,7 @@ namespace QuotaPeek.Shell;
 public sealed class CapsuleHost : IDisposable
 {
     private List<ICapsule> capsules = [];
+    private readonly Dictionary<ICapsule, Action> subscriptions = [];
     private readonly DispatcherTimer carousel = new();
     private readonly Action remember;
     private AppSettings settings;
@@ -26,12 +27,18 @@ public sealed class CapsuleHost : IDisposable
         var id = Current?.Id ?? settings.LastCapsuleId;
         foreach (var old in capsules)
         {
-            old.Changed -= OnChanged;
+            if (subscriptions.Remove(old, out var subscription)) old.Changed -= subscription;
             if (!items.Contains(old)) { try { old.Dispose(); } catch { } }
         }
         capsules = items;
-        foreach (var capsule in capsules) capsule.Changed += OnChanged;
+        foreach (var capsule in capsules)
+        {
+            Action subscription = () => { if (Current == capsule) OnChanged(); };
+            subscriptions[capsule] = subscription;
+            capsule.Changed += subscription;
+        }
         Current = capsules.FirstOrDefault(c => c.Id == id) ?? capsules.FirstOrDefault();
+        if (settings.LastCapsuleId != Current?.Id) { settings.LastCapsuleId = Current?.Id; remember(); }
         carousel.Stop();
         carousel.Interval = TimeSpan.FromSeconds(Math.Clamp(settings.CarouselSeconds, 5, 3600));
         if (settings.AutoRotate && !paused) carousel.Start();
@@ -48,7 +55,7 @@ public sealed class CapsuleHost : IDisposable
         Current = capsules[index]; settings.LastCapsuleId = Current.Id;
         remember(); OnChanged();
     }
-    public Task Refresh(bool force = false) => Task.WhenAll(capsules.Select(c => Guard(c, () => c.Refresh(force))));
+    public Task Refresh(bool force = false) => Task.WhenAll(capsules.ToArray().Select(c => Guard(c, () => c.Refresh(force))));
     public async Task RunAction(string id)
     {
         var capsule = Current;
@@ -65,7 +72,7 @@ public sealed class CapsuleHost : IDisposable
     public async Task Resume()
     {
         paused = false;
-        foreach (var capsule in capsules) await Guard(capsule, capsule.Resume);
+        foreach (var capsule in capsules.ToArray()) await Guard(capsule, capsule.Resume);
         if (settings.AutoRotate) carousel.Start();
         OnChanged();
     }
@@ -76,7 +83,7 @@ public sealed class CapsuleHost : IDisposable
         {
             var index = capsules.IndexOf(capsule);
             if (index < 0) return;
-            capsule.Changed -= OnChanged;
+            if (subscriptions.Remove(capsule, out var subscription)) capsule.Changed -= subscription;
             try { capsule.Dispose(); } catch { }
             var unavailable = new UnavailableCapsule(capsule.Id, capsule.Title);
             capsules[index] = unavailable;
@@ -90,6 +97,7 @@ public sealed class CapsuleHost : IDisposable
         disposed = true; carousel.Stop();
         foreach (var capsule in capsules) { try { capsule.Dispose(); } catch { } }
         capsules.Clear();
+        subscriptions.Clear();
     }
     private sealed class UnavailableCapsule : CapsuleBase
     {

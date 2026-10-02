@@ -34,12 +34,13 @@ public abstract class CapsuleBase : ICapsule
     {
         if (refreshing || disposed || Paused) return;
         refreshing = true;
+        var before = (PrimaryText, SecondaryText, Status, Tooltip);
         try { await RefreshCore(force); }
-        catch (Exception) { Status = CapsuleStatus.Unavailable; PrimaryText = "unavailable"; Tooltip = Title + " 暂时无法读取，将自动重试。"; }
-        finally { refreshing = false; if (!disposed) Publish(); }
+        catch (Exception) { Status = CapsuleStatus.Unavailable; PrimaryText = "unavailable"; SecondaryText = ""; Tooltip = Title + " 暂时无法读取，将自动重试。"; }
+        finally { refreshing = false; if (!disposed && before != (PrimaryText, SecondaryText, Status, Tooltip)) Publish(); }
     }
     protected abstract Task RefreshCore(bool force);
-    public virtual void Pause() { Paused = true; timer?.Stop(); }
+    public virtual void Pause() { Paused = true; Status = CapsuleStatus.Paused; timer?.Stop(); }
     public virtual async Task Resume() { Paused = false; await Initialize(); }
     public virtual void Dispose() { disposed = true; timer?.Stop(); Changed = null; }
 }

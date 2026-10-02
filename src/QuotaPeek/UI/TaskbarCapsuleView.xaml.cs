@@ -23,6 +23,7 @@ public partial class TaskbarCapsuleView : UserControl
         var action = capsule.Actions.FirstOrDefault();
         TaskbarActionButton.Visibility = action is null ? Visibility.Collapsed : Visibility.Visible;
         TaskbarActionButton.Content = action?.Title;
+        System.Windows.Automation.AutomationProperties.SetName(TaskbarActionButton, action?.Title ?? "胶囊操作");
         TaskbarActionButton.IsEnabled = action?.Enabled == true;
         TaskbarActionButton.Tag = action?.Id;
         StatusDot.Fill = status;

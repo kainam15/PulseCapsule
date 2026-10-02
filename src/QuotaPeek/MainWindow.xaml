@@ -28,7 +28,7 @@
           <Button x:Name="SettingsButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE713;" ToolTip="设置" AutomationProperties.Name="打开设置" Click="Settings_Click"/>
         </Grid>
         <ScrollViewer x:Name="CardsScroll" MaxHeight="560" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-          <ContentControl x:Name="CapsuleContent"/>
+          <ContentControl x:Name="CapsuleContent" HorizontalContentAlignment="Stretch"/>
         </ScrollViewer>
         <Grid Margin="2,2,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="{StaticResource Mint}" Margin="0,0,6,0"/><TextBlock x:Name="FooterText" Text="自动刷新已开启" FontSize="10" Foreground="{StaticResource Muted}"/></StackPanel>

@@ -13,7 +13,7 @@ public sealed class SystemCapsule : CapsuleBase
     public override string Id => "system";
     public override string Title => "System";
     public override CapsuleAppearance Appearance => new(false, false, 13, 12);
-    public override string Footer => demo ? "演示数据 · 不读写真实硬件" : "1 Hz · 最近 2 分钟 · 本机监控";
+    public override string Footer => Paused ? "暂停监控" : demo ? "演示数据 · 不读写真实硬件" : "1 Hz · 最近 2 分钟 · 本机监控";
     public override IReadOnlyList<CapsuleAction> Actions => [new("cooling", fan.State == CoolingState.Cooling ? "🌀 COOL" : fan.State == CoolingState.RecoveryRequired ? "⚠ 恢复" : "🌀 AUTO", Toggle, !toggling && fan.CanToggle)];
     public SystemCapsule(SystemPreferences preferences, bool demo, string dataDirectory) : base(TimeSpan.FromSeconds(1))
     {

@@ -41,7 +41,15 @@ public sealed class AsusAcpiAdapter : IDisposable
     public AsusAcpiAdapter(HardwareIdentity identity)
     {
         Identity = identity;
-        if (identity.IsAsus) handle = CreateFile(@"\\.\ATKACPI", 0xC0000000, 3, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        Reconnect();
+    }
+    public void Reconnect()
+    {
+        lock (gate)
+        {
+            handle?.Dispose(); handle = null;
+            if (Identity.IsAsus) handle = CreateFile(@"\\.\ATKACPI", 0xC0000000, 3, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
+        }
     }
     private byte[] Call(uint method, uint endpoint, byte[] parameters)
     {

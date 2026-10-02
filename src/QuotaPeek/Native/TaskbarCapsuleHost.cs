@@ -48,6 +48,7 @@ public sealed class TaskbarCapsuleHost : IDisposable
 
     public void SetVisible(bool value)
     {
+        if (visible == value) return;
         visible = value;
         if (IsAttached) ShowWindow(source!.Handle, value ? 4 : 0);
     }
