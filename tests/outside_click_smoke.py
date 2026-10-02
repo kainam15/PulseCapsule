@@ -13,7 +13,7 @@ from pywinauto import Desktop, mouse
 from outside_click_target import OutsideClickTarget, require_input_desktop
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exe', default='dist/QuotaPeek.exe')
+parser.add_argument('--exe', default='dist/PulseCapsule.exe')
 parser.add_argument('--pid', type=int, help='Check an existing taskbar instance without saving settings.')
 parser.add_argument('--docked', action='store_true')
 args = parser.parse_args()
@@ -52,7 +52,7 @@ def capsule_handle():
     shell = u.FindWindowW('Shell_TrayWnd', None)
     child = None
     while True:
-        child = u.FindWindowExW(shell, child, None, 'QuotaPeek Taskbar Capsule')
+        child = u.FindWindowExW(shell, child, None, 'PulseCapsule Taskbar Capsule')
         if not child:
             return None
         pid = wt.DWORD()
@@ -77,7 +77,7 @@ def physical_click(control, button='left'):
     pid = wt.DWORD()
     u.GetWindowThreadProcessId(u.WindowFromPoint(wt.POINT(*point)), ctypes.byref(pid))
     if pid.value != app_pid:
-        raise RuntimeError('environment-blocked: QuotaPeek control is obscured')
+        raise RuntimeError('environment-blocked: PulseCapsule control is obscured')
     # Give WPF time to establish capture before release (the capsule uses a
     # press/drag/release gesture rather than a Button.Click handler).
     mouse.press(button=button, coords=point)
@@ -131,7 +131,7 @@ try:
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         app_pid = proc.pid
         results['pid'] = app_pid
-    native_panel = Desktop(backend='win32').window(title='QuotaPeek', process=app_pid, visible_only=False)
+    native_panel = Desktop(backend='win32').window(title='PulseCapsule', process=app_pid, visible_only=False)
     native_panel.wait('exists', timeout=20)
     panel = desktop.window(handle=native_panel.handle)
     scale = u.GetDpiForWindow(panel.handle) / 96
@@ -186,7 +186,7 @@ try:
     hit = u.WindowFromPoint(wt.POINT(ir.left + ir.width() // 2, ir.top + ir.height() // 2))
     check('menu stays clickable across taskbar placement refresh', hit == menu.handle)
     physical_click(item)
-    native_settings = Desktop(backend='win32').window(title='QuotaPeek 设置', process=app_pid)
+    native_settings = Desktop(backend='win32').window(title='PulseCapsule 设置', process=app_pid)
     try:
         native_settings.wait('visible', timeout=10)
     except Exception:

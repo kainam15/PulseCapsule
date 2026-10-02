@@ -100,6 +100,8 @@ python tests\outside_click_smoke.py --exe dist\PulseCapsule.exe
 python tests\outside_click_smoke.py --exe dist\PulseCapsule.exe --docked
 python tests\system_capsule_smoke.py --exe dist\PulseCapsule.exe
 python tests\system_capsule_smoke.py --exe dist\PulseCapsule.exe --live
+python tests\capsule_settings_smoke.py --exe dist\PulseCapsule.exe
+python tests\capsule_settings_smoke.py --exe dist\PulseCapsule.exe --live
 ```
 
 测试每次使用独立数据目录，不覆盖正常账户。拖动测试会操作真实鼠标，运行期间需要保持桌面空闲；检测到外部鼠标输入时会中止并报告环境干扰。`--demo` 仅用演示数据，不联网；`--data-dir` 可隔离设置与凭据命名空间；`--render` 输出 WPF 渲染图用于视觉检查，不能单独证明物理输入正常。
@@ -110,4 +112,4 @@ python tests\system_capsule_smoke.py --exe dist\PulseCapsule.exe --live
 
 旧名称仅保留在存储兼容常量、对应测试和历史验证记录中，仓库所在目录可继续叫 `QuotaPeek`。图标资源已更名，沿用原透明图案。
 
-工程参考与现场验证见 [docs/research.md](docs/research.md) 和 [docs/verification.md](docs/verification.md)。
+本轮结果与未完成项见 [PulseCapsule 验证记录](docs/pulsecapsule-verification.md)，架构和协议依据见 [Capsule Host](docs/capsules.md)。早期研究与版本记录保留在 [docs/research.md](docs/research.md) 和 [docs/verification.md](docs/verification.md)。

@@ -39,7 +39,7 @@ class OutsideClickTarget:
         self.original_cursor = wt.POINT()
         u.GetCursorPos(ctypes.byref(self.original_cursor))
         self.root = tk.Tk()
-        self.root.title('QuotaPeek outside-click test target')
+        self.root.title('PulseCapsule outside-click test target')
         self.root.geometry('280x120+20+20')
         self.root.attributes('-topmost', True)
         self.root.configure(background='#edf3f7')

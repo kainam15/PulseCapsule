@@ -14,7 +14,7 @@ from win32info import process_name
 from outside_click_target import collapse_panel
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--exe", default="dist/QuotaPeek.exe")
+parser.add_argument("--exe", default="dist/PulseCapsule.exe")
 parser.add_argument("--live", action="store_true")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
@@ -49,7 +49,7 @@ env = os.environ.copy()
 proc = subprocess.Popen(command, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
 try:
     app = Application(backend="uia").connect(process=proc.pid, timeout=20)
-    widget = app.window(title="QuotaPeek")
+    widget = app.window(title="PulseCapsule")
     widget.wait("exists visible", timeout=30)
     wait_until(45, 0.25, lambda: (artifact / "render.png").exists())
     check("packaged EXE started")
@@ -58,6 +58,20 @@ try:
     check("toolwindow + noactivate + topmost", style & 0x80 and style & 0x8000000 and style & 0x8)
     check("excluded from taskbar", not style & 0x40000)
     results["dpi"] = u.GetDpiForWindow(hwnd)
+    if widget.child_window(auto_id="ExpandButton").exists(timeout=.2) and widget.child_window(auto_id="ExpandButton").is_visible():
+        widget.child_window(auto_id="ExpandButton").invoke()
+    # Capsule content is composed asynchronously; wait for its automation peers as well as the window.
+    def quota_details_ready():
+        if widget.child_window(auto_id='ExpandButton').exists(timeout=.1) and widget.child_window(auto_id='ExpandButton').is_visible():
+            widget.child_window(auto_id='ExpandButton').invoke()
+        return all(name in '\n'.join(control.window_text() for control in widget.descendants(control_type='Text')) for name in ('Hone API', 'Codex'))
+    try:
+        wait_until(15, .2, quota_details_ready)
+    except Exception:
+        print('Initial window bounds:', widget.rectangle(), flush=True)
+        print('Initial UIA text:', [(x.element_info.automation_id, x.window_text()) for x in widget.descendants(control_type='Text')], flush=True)
+        widget.capture_as_image().save(artifact/'initial-failure.png')
+        raise
     text = "\n".join(control.window_text() for control in widget.descendants(control_type="Text"))
     check("Hone and Codex cards visible", "Hone API" in text and "Codex" in text)
     if args.live:
@@ -73,7 +87,7 @@ try:
     wait_until(5, .1, lambda: widget.rectangle().width() >= width)
     check("capsule expands")
     widget.child_window(auto_id="SettingsButton", control_type="Button").invoke()
-    settings = widget.child_window(title="QuotaPeek 设置", control_type="Window")
+    settings = widget.child_window(title="PulseCapsule 设置", control_type="Window")
     settings.wait("visible", timeout=10)
     settings.child_window(auto_id="NameInput").set_edit_text("Hone 测试")
     settings.child_window(auto_id="IntervalInput").set_edit_text("0")
@@ -137,7 +151,7 @@ try:
             wait_until(5, .1, lambda: widget.rectangle().left < before.left-20)
             check("physical dragging moves widget")
             lock_button = widget.child_window(auto_id="LockButton", control_type="Button")
-            shortcut = lock_button.wrapper_object().iface_element.CurrentHelpText
+            shortcut = lock_button.wrapper_object().element_info.element.CurrentHelpText
             lock_button.invoke()
             wait_until(5, .1, lambda: bool(u.GetWindowLongPtrW(hwnd, -20) & 0x20))
             check("lock applies mouse transparency")
@@ -154,7 +168,7 @@ try:
     results["result"] = "passed"
 finally:
     try:
-        u.PostMessageW(app.window(title="QuotaPeek").handle, 0x10, 0, 0)
+        u.PostMessageW(app.window(title="PulseCapsule").handle, 0x10, 0, 0)
         proc.wait(timeout=8)
         check("clean shutdown releases process", proc.returncode == 0)
     except Exception:

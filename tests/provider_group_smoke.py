@@ -12,7 +12,7 @@ from pywinauto.timings import wait_until
 from outside_click_target import collapse_panel
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--exe", default="dist/QuotaPeek.exe")
+parser.add_argument("--exe", default="dist/PulseCapsule.exe")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 artifact = root / ".artifacts" / ("provider-group-" + time.strftime("%Y%m%d-%H%M%S"))
@@ -50,7 +50,7 @@ def names():
 
 try:
     app = Application(backend="uia").connect(process=proc.pid, timeout=20)
-    widget = app.window(title="QuotaPeek")
+    widget = app.window(title="PulseCapsule")
     widget.wait("exists visible", timeout=30)
     wait_until(15, .2, lambda: names() == ["Hone", "Codex"])
     wait_until(15, .2, lambda: (artifact / "render.png").exists())
@@ -68,7 +68,7 @@ try:
     check("collapse and expand preserve grouped cards", names() == ["Hone", "Codex"])
 
     widget.child_window(auto_id="SettingsButton", control_type="Button").invoke()
-    settings = widget.child_window(title="QuotaPeek 设置", control_type="Window")
+    settings = widget.child_window(title="PulseCapsule 设置", control_type="Window")
     settings.wait("visible", timeout=10)
     settings.child_window(auto_id="ProviderList", control_type="List").children(control_type="ListItem")[2].select()
     settings.child_window(auto_id="BaseUrlInput").set_edit_text("https://other.example.test")

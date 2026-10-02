@@ -13,7 +13,7 @@ from pywinauto import Desktop, keyboard, mouse
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exe', default='dist/QuotaPeek.exe')
+parser.add_argument('--exe', default='dist/PulseCapsule.exe')
 parser.add_argument('--pid', type=int, help='Verify an existing taskbar instance without changing its settings.')
 parser.add_argument('--repeat', type=int, default=3)
 parser.add_argument('--floating', action='store_true', help='Check the floating widget right-click menu.')
@@ -68,7 +68,7 @@ def check(name, passed, **evidence):
 def capsule_handle():
     after = None
     while True:
-        after = u.FindWindowExW(taskbar, after, None, 'QuotaPeek Taskbar Capsule')
+        after = u.FindWindowExW(taskbar, after, None, 'PulseCapsule Taskbar Capsule')
         if not after:
             return None
         pid = wt.DWORD()
@@ -108,7 +108,7 @@ def capture(name):
 
 def settings_window():
     for window in Desktop(backend='win32').windows(process=app_pid, visible_only=True):
-        if window.window_text() == 'QuotaPeek 设置':
+        if window.window_text() == 'PulseCapsule 设置':
             return desktop.window(handle=window.handle)
     return None
 
@@ -148,7 +148,7 @@ try:
         app_pid = proc.pid
         results['pid'] = app_pid
     if args.floating:
-        capsule = desktop.window(title='QuotaPeek', process=app_pid)
+        capsule = desktop.window(title='PulseCapsule', process=app_pid)
         capsule.wait('visible', timeout=20)
         if not args.pid:
             wait_for(lambda: capsule.rectangle().left == 240 and capsule.rectangle().top == 620)
@@ -162,11 +162,11 @@ try:
     # A controlled external window proves clicks reach another process, including
     # when that process was already foreground before opening the menu.
     target = tk.Tk()
-    target.title('QuotaPeek menu test surface')
+    target.title('PulseCapsule menu test surface')
     target.geometry('420x180+650+350')
     target.attributes('-topmost', True)
     target.configure(bg='#d5e5ee')
-    tk.Label(target, text='QuotaPeek 菜单关闭验证', bg='#d5e5ee').pack(pady=60)
+    tk.Label(target, text='PulseCapsule 菜单关闭验证', bg='#d5e5ee').pack(pady=60)
     target.update()
     target_hwnd = u.GetAncestor(target.winfo_id(), 2)
     received = []
@@ -179,6 +179,10 @@ try:
         scenarios = ([('right-click', 'left'), ('right-click', 'right'), ('right-click', 'escape')]
                      if args.floating else [('button', 'left'), ('right-click', 'left'), ('button', 'right'), ('button', 'escape')])
         for opening, dismissal in scenarios:
+            # A background test runner cannot always force foreground by API alone.
+            # Give this harmless test target genuine input before checking focus.
+            mouse.click(coords=(target.winfo_rootx() + 30, target.winfo_rooty() + 30))
+            target.update()
             u.SetForegroundWindow(target_hwnd)
             wait_for(lambda: u.GetForegroundWindow() == target_hwnd)
             click(menu_button if opening == 'button' else expand_button, 'left' if opening == 'button' else 'right')
@@ -232,7 +236,7 @@ finally:
         target.destroy()
     if proc and proc.poll() is None:
         for window in Desktop(backend='win32').windows(process=app_pid, visible_only=False):
-            if window.window_text() == 'QuotaPeek':
+            if window.window_text() == 'PulseCapsule':
                 u.PostMessageW(window.handle, 0x10, 0, 0)
         try:
             proc.wait(timeout=8)

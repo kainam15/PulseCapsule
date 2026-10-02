@@ -13,7 +13,7 @@ from pywinauto.timings import wait_until
 from outside_click_target import collapse_panel
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exe', default='dist/QuotaPeek.exe')
+parser.add_argument('--exe', default='dist/PulseCapsule.exe')
 args = parser.parse_args()
 artifact = Path(__file__).resolve().parents[1] / '.artifacts' / ('wheel-' + time.strftime('%Y%m%d-%H%M%S'))
 artifact.mkdir(parents=True)
@@ -21,6 +21,8 @@ settings_path = artifact / 'settings.json'
 settings_path.write_text(json.dumps({
     'Version': 1, 'StartExpanded': False, 'LeftPixels': 240, 'TopPixels': 620,
     'Notifications': False, 'AutoHideFullscreen': False,
+    # Preserve the original clock/quota regression topology; system_capsule_smoke covers the full host.
+    'Capsules': [{'Id': 'clock'}, {'Id': 'quota'}, {'Id': 'system', 'Enabled': False}],
     'Providers': [
         {'Id': 'wallet-a', 'Name': '钱包 A', 'Type': 'HoneWallet', 'LowThreshold': 100},
         {'Id': 'disabled', 'Name': '停用账户', 'Type': 'Manual', 'Enabled': False},
@@ -127,7 +129,7 @@ def cycle(name, delta, expected, point=None):
 def capsule_handle():
     child = None
     while True:
-        child = u.FindWindowExW(taskbar, child, None, 'QuotaPeek Taskbar Capsule')
+        child = u.FindWindowExW(taskbar, child, None, 'PulseCapsule Taskbar Capsule')
         if not child:
             return None
         pid = wt.DWORD()
@@ -146,7 +148,7 @@ def open_settings():
         surface.child_window(auto_id='TaskbarExpandButton' if embedded else 'ExpandButton').invoke()
     main.child_window(auto_id='SettingsButton').wait('visible', timeout=5)
     main.child_window(auto_id='SettingsButton').invoke()
-    settings = main.child_window(title='QuotaPeek 设置', control_type='Window')
+    settings = main.child_window(title='PulseCapsule 设置', control_type='Window')
     settings.wait('visible', timeout=10)
     return Desktop(backend='uia').window(handle=settings.handle)
 
@@ -171,7 +173,7 @@ try:
         raise RuntimeError(results['physical'])
     proc = subprocess.Popen([str(Path(args.exe).resolve()), '--demo', '--data-dir', str(artifact)], creationflags=subprocess.CREATE_NO_WINDOW)
     app = Application(backend='uia').connect(process=proc.pid, timeout=20)
-    main = app.window(title='QuotaPeek')
+    main = app.window(title='PulseCapsule')
     main.wait('visible', timeout=15)
     main_handle = main.handle
     surface = main
@@ -224,10 +226,10 @@ try:
     settings.child_window(auto_id='SaveButton').invoke()
     close_settings(settings)
     collapse_panel(main)
-    expect('钱包 A')
-    check('disabled selected provider falls back safely', text().startswith('钱包 A'))
-    cycle('clock remains available after disabling Codex', 120, clock_prefix)
+    expect(clock_prefix)
+    check('disabled selected provider falls back to first enabled capsule', text().startswith(clock_prefix))
     cycle('cycle excludes newly disabled Codex', 120, '钱包 B')
+    cycle('remaining provider order stays stable', 120, '钱包 A')
 
     settings = open_settings()
     settings.child_window(auto_id='TaskbarDockCheck').toggle()
@@ -236,7 +238,9 @@ try:
     close_settings(settings)
     embedded = True
     surface = Desktop(backend='uia').window(handle=capsule_handle())
-    expect('钱包 B')
+    expect('钱包 A')
+    check('docking preserves current capsule by ID', text().startswith('钱包 A'))
+    cycle('taskbar hover wheel reaches next quota without activating', -120, '钱包 B')
     cycle('taskbar hover wheel reaches clock without activating', -120, clock_prefix)
     taskbar_clock = surface.child_window(auto_id='ProviderText').window_text()
     check('taskbar clock shows full date and minutes without seconds', taskbar_clock.startswith(clock_prefix) and len(taskbar_clock) == 16 and taskbar_clock.count(':') == 1, value=taskbar_clock)

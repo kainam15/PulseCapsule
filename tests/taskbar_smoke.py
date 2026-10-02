@@ -13,7 +13,8 @@ from pywinauto.timings import wait_until
 from outside_click_target import collapse_panel
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exe', default='dist/QuotaPeek.exe')
+parser.add_argument('--exe', default='dist/PulseCapsule.exe')
+parser.add_argument('--uia', action='store_true', help='Check lifecycle without mouse input; does not verify physical focus preservation.')
 args = parser.parse_args()
 artifact = Path(__file__).resolve().parents[1] / '.artifacts' / ('taskbar-' + time.strftime('%Y%m%d-%H%M%S'))
 artifact.mkdir(parents=True)
@@ -69,7 +70,7 @@ def rect(hwnd):
 def capsule_handle():
     after = None
     while True:
-        after = u.FindWindowExW(taskbar, after, None, 'QuotaPeek Taskbar Capsule')
+        after = u.FindWindowExW(taskbar, after, None, 'PulseCapsule Taskbar Capsule')
         if not after:
             return None
         pid = wt.DWORD()
@@ -92,9 +93,10 @@ def physical_click(button):
 
 
 def enable_docking():
-    main.child_window(auto_id='ExpandButton', control_type='Button').invoke()
+    if not main.child_window(auto_id='SettingsButton', control_type='Button').exists(timeout=0):
+        main.child_window(auto_id='ExpandButton', control_type='Button').invoke()
     main.child_window(auto_id='SettingsButton', control_type='Button').invoke()
-    settings = main.child_window(title='QuotaPeek 设置', control_type='Window')
+    settings = main.child_window(title='PulseCapsule 设置', control_type='Window')
     settings.wait('visible', timeout=10)
     settings = Desktop(backend='uia').window(handle=settings.handle)
     box = settings.child_window(auto_id='TaskbarDockCheck', control_type='CheckBox')
@@ -119,7 +121,7 @@ def start():
         if pid.value == proc.pid:
             title = ctypes.create_unicode_buffer(256)
             u.GetWindowTextW(hwnd, title, len(title))
-            if title.value == 'QuotaPeek':
+            if title.value == 'PulseCapsule':
                 handles.append(hwnd)
         return True
     def ready():
@@ -165,7 +167,7 @@ try:
     desktop = u.OpenInputDesktop(0, False, 1)
     name = ctypes.create_unicode_buffer(128)
     needed = wt.DWORD()
-    physical = bool(desktop and u.GetUserObjectInformationW(desktop, 2, name, ctypes.sizeof(name), ctypes.byref(needed)) and name.value == 'Default')
+    physical = not args.uia and bool(desktop and u.GetUserObjectInformationW(desktop, 2, name, ctypes.sizeof(name), ctypes.byref(needed)) and name.value == 'Default')
     if desktop:
         u.CloseDesktop(desktop)
     button = capsule.child_window(auto_id='TaskbarExpandButton', control_type='Button')
@@ -188,22 +190,40 @@ try:
         button.invoke()
     wait_until(5, .1, lambda: not u.IsWindowVisible(main.handle))
     check('second click closes card and keeps embedded capsule', bool(u.IsWindowVisible(hwnd)))
-    results['physical'] = 'passed' if physical else 'environment-blocked'
+    results['physical'] = 'passed' if physical else ('not-run' if args.uia else 'environment-blocked')
 
     # Closing just our child HWND simulates losing the embedded surface. Explorer is untouched.
     u.PostMessageW(hwnd, 0x10, 0, 0)
     wait_until(10, .1, lambda: bool(capsule_handle()) and capsule_handle() != hwnd)
     check('lost child surface recreated without exiting main app', proc.poll() is None)
     capsule = Desktop(backend='uia').window(handle=capsule_handle())
-    capsule.child_window(auto_id='TaskbarMenuButton', control_type='Button').invoke()
-    Desktop(backend='uia').window(title='切回自由悬浮', control_type='MenuItem', process=proc.pid, top_level_only=False).invoke()
+    menu_button = capsule.child_window(auto_id='TaskbarMenuButton', control_type='Button')
+    menu_button.wait('visible', timeout=5)
+    if physical:
+        physical_click(menu_button)
+    else:
+        menu_button.invoke()
+    # WPF exposes ContextMenu in a separate popup HWND. Resolve that popup,
+    # rather than searching only the desktop's immediate automation children.
+    def undock_item():
+        for window in Desktop(backend='win32').windows(process=proc.pid, visible_only=True):
+            if window.window_text() or not window.class_name().startswith('HwndWrapper'):
+                continue
+            popup = Desktop(backend='uia').window(handle=window.handle)
+            item = popup.child_window(title='切回自由悬浮', control_type='MenuItem')
+            if item.exists(timeout=0):
+                return item
+        return None
+    wait_until(5, .1, lambda: undock_item() is not None)
+    undock_item().invoke()
     wait_until(5, .1, lambda: not capsule_handle() and bool(u.IsWindowVisible(main.handle)))
     # Opening settings expanded the floating card; remember its anchored coordinates.
     current = json.loads(settings_path.read_text(encoding='utf-8-sig'))
     check('undock restores saved floating position', rect(main.handle)[:2] == [current['LeftPixels'], current['TopPixels']])
     check('undock preference persisted', current['TaskbarDocked'] is False)
-    collapse_panel(main)
-    check('floating capsule returns to its original position', rect(main.handle)[:2] == original_position)
+    if physical:
+        collapse_panel(main)
+        check('floating capsule returns to its original position', rect(main.handle)[:2] == original_position)
     enable_docking()
     before_restart = json.loads(settings_path.read_text(encoding='utf-8-sig'))
     stop()

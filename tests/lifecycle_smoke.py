@@ -10,7 +10,7 @@ from pywinauto import Application
 from pywinauto.timings import wait_until
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exe', default='dist/QuotaPeek.exe')
+parser.add_argument('--exe', default='dist/PulseCapsule.exe')
 args = parser.parse_args()
 
 root = Path(__file__).resolve().parents[1]
@@ -36,7 +36,7 @@ for phase in range(2):
     p = subprocess.Popen([str(Path(args.exe).resolve()), '--data-dir', str(artifact)], creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         a = Application(backend='uia').connect(process=p.pid, timeout=20)
-        w = a.window(title='QuotaPeek', control_type='Window'); w.wait('visible', timeout=15)
+        w = a.window(title='PulseCapsule', control_type='Window'); w.wait('visible', timeout=15)
         w.child_window(auto_id='ExpandButton', control_type='Button').wait('visible', timeout=10)
         wait_until(10, .1, lambda: w.rectangle().width() == round(252 * u.GetDpiForWindow(w.handle) / 96))
         rect = w.rectangle()

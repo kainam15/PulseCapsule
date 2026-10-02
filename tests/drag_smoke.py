@@ -14,7 +14,7 @@ from PIL import ImageGrab
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--exe", default="dist/QuotaPeek.exe")
+parser.add_argument("--exe", default="dist/PulseCapsule.exe")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 artifact = root / ".artifacts" / ("drag-" + time.strftime("%Y%m%d-%H%M%S"))
@@ -122,7 +122,7 @@ def launch():
     proc = subprocess.Popen([results["exe"], "--demo", "--data-dir", str(data_dir)],
                             creationflags=subprocess.CREATE_NO_WINDOW)
     app = Application(backend="uia").connect(process=proc.pid, timeout=20)
-    widget = app.window(title="QuotaPeek", control_type="Window")
+    widget = app.window(title="PulseCapsule", control_type="Window")
     widget.wait("exists visible", timeout=15)
     widget = app.window(handle=widget.handle)
     widget.child_window(auto_id="ExpandButton", control_type="Button").wait("visible", timeout=10)
@@ -225,7 +225,7 @@ try:
     drag("expanded card background drags", (card.left + 12, card.top + 60), (20, 20), .1)
 
     widget.child_window(auto_id="SettingsButton", control_type="Button").click_input()
-    settings = widget.child_window(title="QuotaPeek 设置", control_type="Window")
+    settings = widget.child_window(title="PulseCapsule 设置", control_type="Window")
     settings.wait("visible", timeout=5)
     check("settings button still clicks", settings.is_visible())
     settings.close()
