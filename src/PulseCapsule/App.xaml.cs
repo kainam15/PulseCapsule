@@ -1,0 +1,128 @@
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Windows;
+using PulseCapsule.Services;
+using PulseCapsule.Shell;
+using PulseCapsule.Capsules.Clock;
+using PulseCapsule.Capsules.Quota;
+using PulseCapsule.Capsules.SystemInfo;
+using PulseCapsule.UI;
+
+namespace PulseCapsule;
+
+public partial class App : Application
+{
+    private Mutex? mutex;
+    public SettingsStore Store { get; private set; } = null!;
+    public CredentialStore Credentials { get; private set; } = null!;
+    public QuotaMonitor Monitor { get; private set; } = null!;
+    public CapsuleHost Host { get; private set; } = null!;
+    public AppSettings Settings => Monitor.Settings;
+    public bool Demo => Monitor.Demo;
+    public string? RenderPath { get; private set; }
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        try
+        {
+            string? Argument(string name) { var i = Array.IndexOf(e.Args, name); return i >= 0 && i + 1 < e.Args.Length ? e.Args[i + 1] : null; }
+            var demo = e.Args.Contains("--demo");
+            var directory = Argument("--data-dir") ?? DataIdentity.DefaultDirectory(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), demo);
+            directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+            var scope = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(directory.ToUpperInvariant())))[..12];
+            mutex = new Mutex(true, DataIdentity.MutexName(scope), out var first);
+            if (!first)
+            {
+                MessageBox.Show("PulseCapsule 已在运行。请从右下角托盘菜单打开。", "PulseCapsule", MessageBoxButton.OK, MessageBoxImage.Information);
+                Shutdown(); return;
+            }
+            Store = new(directory);
+            Credentials = new(scope);
+            var settings = Store.Load();
+            if (!demo && Argument("--data-dir") is null) DataIdentity.UpgradeStartupRegistration(settings.StartWithWindows);
+            var history = new HistoryStore(directory);
+            Monitor = new(settings, Credentials, history, demo);
+            Host = new(settings, () => { try { Store.Save(Settings); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { } });
+            SessionEnding += (_, _) => RestoreHardware();
+            DispatcherUnhandledException += (_, _) => RestoreHardware();
+            AppDomain.CurrentDomain.UnhandledException += (_, _) => RestoreHardware();
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => RestoreHardware();
+            Monitor.LowQuota += (config, snapshot) => Host.Notify(config.Name + " 额度提醒", snapshot.Kind == QuotaKind.RateWindow
+                ? "剩余额度低于设置的阈值。" : "当前剩余 " + CardViewModel.Money(snapshot.Remaining, snapshot.Currency));
+            if (settings.LastCapsuleId is null && settings.Providers.FirstOrDefault(p => p.Enabled) is { } firstProvider)
+                settings.LastCapsuleId = "quota:" + firstProvider.Id;
+            _ = ConfigureCapsules();
+            RenderPath = Argument("--render");
+            var window = new MainWindow(this);
+            MainWindow = window;
+            window.Show();
+            if (e.Args.Contains("--settings")) OpenSettings();
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show("PulseCapsule 无法启动。请确认数据目录可写。\n" + error.GetType().Name, "PulseCapsule", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+    private void RestoreHardware()
+    {
+        foreach (var system in Host?.Capsules.OfType<SystemCapsule>().ToArray() ?? [])
+        {
+            try { system.EmergencyRestore(); } catch { }
+        }
+    }
+    public void OpenSettings()
+    {
+        var existing = Windows.OfType<SettingsWindow>().FirstOrDefault();
+        if (existing is not null) { existing.Activate(); return; }
+        new SettingsWindow(this) { Owner = MainWindow }.Show();
+    }
+    public void SaveSettings(AppSettings settings)
+    {
+        Store.Save(settings);
+        Monitor.Apply(settings);
+        _ = ConfigureCapsules();
+    }
+    private Task ConfigureCapsules()
+    {
+        Settings.Capsules = CapsuleSelection.Normalize(Settings.Capsules);
+        List<ICapsule> items = [];
+        foreach (var pref in Settings.Capsules.Where(p => p.Enabled))
+        {
+            switch (pref.Id)
+            {
+                case "clock": items.Add(new ClockCapsule()); break;
+                case "quota": items.AddRange(Settings.Providers.Where(p => p.Enabled).Select(p => new QuotaCapsule(p, Monitor, OpenSettings))); break;
+                case "system":
+                    try
+                    {
+                        var system = Host.Capsules.OfType<SystemCapsule>().FirstOrDefault() ?? new SystemCapsule(Settings.System, Demo, Store.DirectoryPath);
+                        system.Configure(Settings.System); items.Add(system);
+                    }
+                    catch { items.Add(new UnavailableSystemCapsule()); }
+                    break;
+            }
+        }
+        if (items.Count == 0) items.Add(new ClockCapsule());
+        return Host.Configure(Settings, items);
+    }
+    private sealed class UnavailableSystemCapsule : PulseCapsule.Capsules.CapsuleBase
+    {
+        public override string Id => "system";
+        public override string Title => "System";
+        protected override Task RefreshCore(bool force) { PrimaryText = "CPU unavailable"; Status = CapsuleStatus.Unavailable; Tooltip = "硬件监控不可用，其他 Capsule 继续运行。"; return Task.CompletedTask; }
+    }
+    public static void OpenWebsite(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https")
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+    }
+    protected override void OnExit(ExitEventArgs e)
+    {
+        Host?.Dispose();
+        Monitor?.Dispose();
+        mutex?.Dispose();
+        base.OnExit(e);
+    }
+}

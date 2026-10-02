@@ -46,7 +46,7 @@ def probe(executable):
 
     try:
         send({"id": 1, "method": "initialize", "params": {
-            "clientInfo": {"name": "quotapeek_probe", "version": "0.1.0"}}})
+            "clientInfo": {"name": "pulsecapsule_probe", "version": "0.2.0"}}})
         response(1)
         send({"method": "initialized", "params": {}})
         send({"id": 2, "method": "account/rateLimits/read"})

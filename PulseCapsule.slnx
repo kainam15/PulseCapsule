@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PulseCapsule.Core/PulseCapsule.Core.csproj" />
+    <Project Path="src/PulseCapsule/PulseCapsule.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PulseCapsule.Checks/PulseCapsule.Checks.csproj" />
+  </Folder>
+</Solution>

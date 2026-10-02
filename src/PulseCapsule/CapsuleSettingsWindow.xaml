@@ -1,0 +1,24 @@
+<Window x:Class="PulseCapsule.CapsuleSettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PulseCapsule Capsules" Icon="/Assets/PulseCapsule.ico" Width="440" Height="660" ResizeMode="CanMinimize" WindowStartupLocation="CenterOwner" Background="{StaticResource Canvas}" Foreground="{StaticResource Text}" FontFamily="Segoe UI, Microsoft YaHei UI">
+  <Grid Margin="24"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+      <TextBlock Text="Capsules" FontSize="24" FontWeight="SemiBold"/>
+      <TextBlock Text="启用并排列你的胶囊" Foreground="{StaticResource Muted}" Margin="0,6,0,16"/>
+      <ListBox x:Name="CapsuleList" Background="{StaticResource Panel}" Foreground="{StaticResource Text}" BorderThickness="0" MinHeight="126">
+        <ListBox.ItemTemplate><DataTemplate><CheckBox Content="{Binding Id}" IsChecked="{Binding Enabled}" Margin="10,6"/></DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      <StackPanel Orientation="Horizontal" Margin="0,8,0,12"><Button Content="↑ 上移" Click="Up_Click" Margin="0,0,8,0"/><Button Content="↓ 下移" Click="Down_Click"/></StackPanel>
+      <CheckBox x:Name="RotateCheck" Content="自动轮播"/>
+      <StackPanel Orientation="Horizontal"><TextBlock Text="轮播间隔（秒）" VerticalAlignment="Center" Margin="0,0,12,0"/><TextBox x:Name="RotateSeconds" Width="65"/></StackPanel>
+      <Border Height="1" Background="{StaticResource Line}" Margin="0,15"/>
+      <TextBlock Text="System" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+      <CheckBox x:Name="TemperatureCheck" Content="CPU temperature"/>
+      <CheckBox x:Name="FanRpmCheck" Content="Fan RPM"/>
+      <CheckBox x:Name="FanControlCheck" Content="Fan control（硬件支持时）"/>
+      <TextBlock Text="Cooling profile   Balanced Cooling" Margin="0,10"/>
+      <TextBlock Text="无法验证原模式及恢复结果时保持只读。其他 ASUS 型号和非 ASUS 设备只提供监控。" Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap"/>
+      <TextBlock x:Name="StatusText" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,14"/>
+    </StackPanel></ScrollViewer>
+    <Button x:Name="SaveCapsulesButton" Grid.Row="1" Content="保存 Capsule 设置" Click="Save_Click" Margin="0,12,0,0" Background="{StaticResource Mint}" Foreground="#15231D"/>
+  </Grid>
+</Window>

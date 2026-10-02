@@ -36,7 +36,7 @@ FA401KM / ASUS System Control Interface 3.1.72.0 的只读探测成功读到 CPU
 只读基线工具（不含账户信息，不写硬件）：
 
 ```powershell
-dotnet run --project tests/QuotaPeek.Checks -c Release -- --system-probe 120
+dotnet run --project tests/PulseCapsule.Checks -c Release -- --system-probe 120
 ```
 
 工程依据见 [capsules.md](capsules.md)。协议常量仅参考 G-Helper；状态机、遥测、宿主与 UI 为本项目独立实现。
