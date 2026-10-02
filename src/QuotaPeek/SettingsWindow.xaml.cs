@@ -213,6 +213,10 @@ public partial class SettingsWindow : Window
     }
     private void Commit(string? savingId = null, bool saveDocking = false)
     {
+        working.Capsules = app.Settings.Capsules.Select(p => p with { }).ToList();
+        working.System = app.Settings.System with { };
+        working.LastCapsuleId = app.Settings.LastCapsuleId;
+        working.AutoRotate = app.Settings.AutoRotate; working.CarouselSeconds = app.Settings.CarouselSeconds;
         // Window coordinates can change while settings are open.
         working.LeftPixels = app.Monitor.Settings.LeftPixels; working.TopPixels = app.Monitor.Settings.TopPixels;
         working.StartExpanded = app.Monitor.Settings.StartExpanded;
@@ -220,6 +224,12 @@ public partial class SettingsWindow : Window
         var committed = Clone(working);
         committed.Providers = committed.Providers.Where(p => !drafts.Contains(p.Id) || p.Id == savingId).ToList();
         app.SaveSettings(committed);
+    }
+    private void Capsules_Click(object sender, RoutedEventArgs e)
+    {
+        var existing = app.Windows.OfType<CapsuleSettingsWindow>().FirstOrDefault();
+        if (existing is not null) { existing.Activate(); return; }
+        new CapsuleSettingsWindow(app) { Owner = this }.Show();
     }
     private void Preferences_Click(object sender, RoutedEventArgs e)
     {
