@@ -1,0 +1,22 @@
+<UserControl x:Class="QuotaPeek.Capsules.SystemInfo.SystemExpandedView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel>
+    <Border Background="{StaticResource Panel}" CornerRadius="13" Padding="16">
+      <StackPanel>
+        <Grid><TextBlock Text="CPU" Foreground="{StaticResource Muted}"/><TextBlock x:Name="TemperatureText" HorizontalAlignment="Right" FontSize="24" FontWeight="SemiBold"/></Grid>
+        <Grid Margin="0,10,0,0"><TextBlock Text="Load" Foreground="{StaticResource Muted}"/><TextBlock x:Name="LoadText" HorizontalAlignment="Right"/></Grid>
+        <TextBlock x:Name="FansText" Margin="0,10,0,0" TextWrapping="Wrap"/>
+        <Viewbox Stretch="Fill" Height="65" Margin="0,20,0,8"><Polyline x:Name="TemperatureLine" Width="280" Height="60" Stroke="{StaticResource Mint}" StrokeThickness="1.8" StrokeLineJoin="Round"/></Viewbox>
+        <TextBlock x:Name="ChartLabel" Foreground="{StaticResource Muted}" FontSize="10" Text="最近 2 分钟 · CPU temperature"/>
+      </StackPanel>
+    </Border>
+    <Border Background="{StaticResource Panel}" CornerRadius="13" Padding="16" Margin="0,10,0,10">
+      <StackPanel>
+        <Grid><TextBlock Text="Cooling" FontWeight="SemiBold"/><TextBlock x:Name="CoolingText" HorizontalAlignment="Right"/></Grid>
+        <TextBlock x:Name="StatisticsText" Margin="0,12,0,10" LineHeight="22"/>
+        <TextBlock x:Name="ControlMessage" Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="11"/>
+        <Button x:Name="CoolingButton" Margin="0,12,0,0" Content="开启 Balanced Cooling" Click="Cooling_Click" AutomationProperties.Name="切换散热"/>
+      </StackPanel>
+    </Border>
+    <Expander Header="诊断信息" FontSize="10" Foreground="{StaticResource Muted}"><TextBlock x:Name="DiagnosticsText" TextWrapping="Wrap" Margin="0,6,0,10"/></Expander>
+  </StackPanel>
+</UserControl>

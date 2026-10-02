@@ -95,12 +95,11 @@ public partial class MainWindow : Window
             if (!dockMode) SavePosition();
             UpdateOutsideClickMonitor();
         };
-        timer.Tick += async (_, _) =>
+        timer.Tick += (_, _) =>
         {
             if (!sessionLocked && !sleeping)
             {
                 CheckFullscreen();
-                await app.Host.Refresh();
                 Render();
             }
         };
@@ -196,7 +195,8 @@ public partial class MainWindow : Window
     private void Notify(string title, string message) => tray.ShowBalloonTip(6000, title, message, Forms.ToolTipIcon.Warning);
     private IntPtr Hook(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam, ref bool handled)
     {
-        if (message == 0x11 || message == 0x16 || (message == 0x218 && wparam.ToInt32() == 4)) app.Host.Pause();
+        if (message == 0x11 || message == 0x16 && wparam != IntPtr.Zero || (message == 0x218 && wparam.ToInt32() == 4)) app.Host.Pause();
+        if (message == 0x16 && wparam == IntPtr.Zero) _ = app.Host.Resume();
         if (message == 0x21) { handled = true; return new IntPtr(3); } // MA_NOACTIVATE
         if (message == WindowNative.WmHotkey && wparam.ToInt32() == WindowNative.HotkeyId)
         {
@@ -207,6 +207,7 @@ public partial class MainWindow : Window
     }
     private void SetExpanded(bool value, bool remember = true)
     {
+        if (value && app.Host.Current?.CanExpand == false) return;
         if (locked && value) return;
         FinishDrag();
         expanded = value;

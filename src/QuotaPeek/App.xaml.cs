@@ -6,6 +6,7 @@ using QuotaPeek.Services;
 using QuotaPeek.Shell;
 using QuotaPeek.Capsules.Clock;
 using QuotaPeek.Capsules.Quota;
+using QuotaPeek.Capsules.SystemInfo;
 using QuotaPeek.UI;
 
 namespace QuotaPeek;
@@ -42,6 +43,10 @@ public partial class App : Application
             var history = new HistoryStore(directory);
             Monitor = new(settings, Credentials, history, demo);
             Host = new(settings, () => { try { Store.Save(Settings); } catch (IOException) { } });
+            SessionEnding += (_, _) => RestoreHardware();
+            DispatcherUnhandledException += (_, _) => RestoreHardware();
+            AppDomain.CurrentDomain.UnhandledException += (_, _) => RestoreHardware();
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => RestoreHardware();
             Monitor.LowQuota += (config, snapshot) => Host.Notify(config.Name + " 额度提醒", snapshot.Kind == QuotaKind.RateWindow
                 ? "剩余额度低于设置的阈值。" : "当前剩余 " + CardViewModel.Money(snapshot.Remaining, snapshot.Currency));
             if (settings.LastCapsuleId is null && settings.Providers.FirstOrDefault(p => p.Enabled) is { } firstProvider)
@@ -57,6 +62,13 @@ public partial class App : Application
         {
             MessageBox.Show("QuotaPeek 无法启动。请确认数据目录可写。\n" + error.GetType().Name, "QuotaPeek", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+    private void RestoreHardware()
+    {
+        foreach (var system in Host?.Capsules.OfType<SystemCapsule>().ToArray() ?? [])
+        {
+            try { system.EmergencyRestore(); } catch { }
         }
     }
     public void OpenSettings()
@@ -81,10 +93,24 @@ public partial class App : Application
             {
                 case "clock": items.Add(new ClockCapsule()); break;
                 case "quota": items.AddRange(Settings.Providers.Where(p => p.Enabled).Select(p => new QuotaCapsule(p, Monitor, OpenSettings))); break;
+                case "system":
+                    try
+                    {
+                        var system = Host.Capsules.OfType<SystemCapsule>().FirstOrDefault() ?? new SystemCapsule(Settings.System, Demo, Store.DirectoryPath);
+                        system.Configure(Settings.System); items.Add(system);
+                    }
+                    catch { items.Add(new UnavailableSystemCapsule()); }
+                    break;
             }
         }
         if (items.Count == 0) items.Add(new ClockCapsule());
         return Host.Configure(Settings, items);
+    }
+    private sealed class UnavailableSystemCapsule : QuotaPeek.Capsules.CapsuleBase
+    {
+        public override string Id => "system";
+        public override string Title => "System";
+        protected override Task RefreshCore(bool force) { PrimaryText = "CPU unavailable"; Status = CapsuleStatus.Unavailable; Tooltip = "硬件监控不可用，其他 Capsule 继续运行。"; return Task.CompletedTask; }
     }
     public static void OpenWebsite(string url)
     {

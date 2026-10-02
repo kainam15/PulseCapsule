@@ -91,10 +91,16 @@ public sealed class CapsuleHost : IDisposable
         foreach (var capsule in capsules) { try { capsule.Dispose(); } catch { } }
         capsules.Clear();
     }
-    private sealed class UnavailableCapsule(string id, string title) : CapsuleBase
+    private sealed class UnavailableCapsule : CapsuleBase
     {
-        public override string Id => id;
-        public override string Title => title;
+        public override string Id { get; }
+        public override string Title { get; }
+        public UnavailableCapsule(string id, string title)
+        {
+            Id = id; Title = title; PrimaryText = title; SecondaryText = "unavailable"; Status = CapsuleStatus.Unavailable;
+            Tooltip = title + " 暂时不可用";
+            ExpandedContent = new System.Windows.Controls.TextBlock { Text = Tooltip, Margin = new System.Windows.Thickness(0, 12, 0, 20) };
+        }
         protected override Task RefreshCore(bool force) { PrimaryText = Title; SecondaryText = "unavailable"; Status = CapsuleStatus.Unavailable; return Task.CompletedTask; }
     }
 }

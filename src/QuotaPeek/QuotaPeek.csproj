@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\QuotaPeek.Core\QuotaPeek.Core.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="System.Management" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="..\..\docs\images\logo.png" Link="Assets\logo.png" />
