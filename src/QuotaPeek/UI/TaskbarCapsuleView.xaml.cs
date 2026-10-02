@@ -8,6 +8,7 @@ namespace QuotaPeek.UI;
 
 public partial class TaskbarCapsuleView : UserControl
 {
+    public event Action<string>? ActionRequested;
     public event Action? ToggleRequested;
     public event Action? UndockRequested;
     public event Action? SettingsRequested;
@@ -16,15 +17,21 @@ public partial class TaskbarCapsuleView : UserControl
 
     public TaskbarCapsuleView() => InitializeComponent();
 
-    public void Update(string name, string value, Brush status, string tooltip, bool clock = false)
+    public void Update(ICapsule capsule, Brush status)
     {
+        var style = capsule.Appearance;
+        var action = capsule.Actions.FirstOrDefault();
+        TaskbarActionButton.Visibility = action is null ? Visibility.Collapsed : Visibility.Visible;
+        TaskbarActionButton.Content = action?.Title;
+        TaskbarActionButton.IsEnabled = action?.Enabled == true;
+        TaskbarActionButton.Tag = action?.Id;
         StatusDot.Fill = status;
-        if (clock)
+        if (style.Centered)
         {
             StatusDot.Visibility = Visibility.Collapsed;
             BalanceText.Visibility = Visibility.Collapsed;
             ProviderText.Visibility = Visibility.Visible;
-            ProviderText.Text = value;
+            ProviderText.Text = capsule.PrimaryText;
             Grid.SetColumn(ProviderText, 0);
             Grid.SetColumnSpan(ProviderText, 3);
             ProviderText.HorizontalAlignment = HorizontalAlignment.Center;
@@ -36,11 +43,11 @@ public partial class TaskbarCapsuleView : UserControl
         }
         else
         {
-            StatusDot.Visibility = Visibility.Visible;
+            StatusDot.Visibility = style.ShowStatus ? Visibility.Visible : Visibility.Collapsed;
             ProviderText.Visibility = Visibility.Visible;
             BalanceText.Visibility = Visibility.Visible;
-            ProviderText.Text = name;
-            BalanceText.Text = value;
+            ProviderText.Text = capsule.PrimaryText;
+            BalanceText.Text = capsule.SecondaryText;
             Grid.SetColumn(ProviderText, 1);
             Grid.SetColumnSpan(ProviderText, 1);
             ProviderText.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -50,9 +57,12 @@ public partial class TaskbarCapsuleView : UserControl
             TaskbarMenuColumn.Width = new GridLength(26);
             TaskbarExpandButton.Padding = new Thickness(6, 0, 6, 0);
         }
-        ToolTip = tooltip + "\n滚轮切换时间 / 钱包 / 额度 · 单击展开 / 收起 · 右键打开菜单";
+        ProviderText.FontSize = style.DockFontSize;
+        if (action is not null) { TaskbarMenuButton.Visibility = Visibility.Collapsed; TaskbarMenuColumn.Width = new GridLength(0); }
+        ToolTip = capsule.Tooltip + "\n滚轮切换 Capsule · 单击展开 / 收起 · 右键打开菜单";
     }
 
+    private void Action_Click(object sender, RoutedEventArgs e) { if (TaskbarActionButton.Tag is string id) ActionRequested?.Invoke(id); }
     private void Expand_Click(object sender, RoutedEventArgs e) => ToggleRequested?.Invoke();
     private void Undock_Click(object sender, RoutedEventArgs e) => UndockRequested?.Invoke();
     private void Settings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();

@@ -3,6 +3,10 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
 using QuotaPeek.Services;
+using QuotaPeek.Shell;
+using QuotaPeek.Capsules.Clock;
+using QuotaPeek.Capsules.Quota;
+using QuotaPeek.UI;
 
 namespace QuotaPeek;
 
@@ -12,6 +16,9 @@ public partial class App : Application
     public SettingsStore Store { get; private set; } = null!;
     public CredentialStore Credentials { get; private set; } = null!;
     public QuotaMonitor Monitor { get; private set; } = null!;
+    public CapsuleHost Host { get; private set; } = null!;
+    public AppSettings Settings => Monitor.Settings;
+    public bool Demo => Monitor.Demo;
     public string? RenderPath { get; private set; }
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -34,6 +41,12 @@ public partial class App : Application
             var settings = Store.Load();
             var history = new HistoryStore(directory);
             Monitor = new(settings, Credentials, history, demo);
+            Host = new(settings, () => { try { Store.Save(Settings); } catch (IOException) { } });
+            Monitor.LowQuota += (config, snapshot) => Host.Notify(config.Name + " 额度提醒", snapshot.Kind == QuotaKind.RateWindow
+                ? "剩余额度低于设置的阈值。" : "当前剩余 " + CardViewModel.Money(snapshot.Remaining, snapshot.Currency));
+            if (settings.LastCapsuleId is null && settings.Providers.FirstOrDefault(p => p.Enabled) is { } firstProvider)
+                settings.LastCapsuleId = "quota:" + firstProvider.Id;
+            _ = ConfigureCapsules();
             RenderPath = Argument("--render");
             var window = new MainWindow(this);
             MainWindow = window;
@@ -56,7 +69,22 @@ public partial class App : Application
     {
         Store.Save(settings);
         Monitor.Apply(settings);
-        _ = Monitor.RefreshAsync(true);
+        _ = ConfigureCapsules();
+    }
+    private Task ConfigureCapsules()
+    {
+        Settings.Capsules = CapsuleSelection.Normalize(Settings.Capsules);
+        List<ICapsule> items = [];
+        foreach (var pref in Settings.Capsules.Where(p => p.Enabled))
+        {
+            switch (pref.Id)
+            {
+                case "clock": items.Add(new ClockCapsule()); break;
+                case "quota": items.AddRange(Settings.Providers.Where(p => p.Enabled).Select(p => new QuotaCapsule(p, Monitor, OpenSettings))); break;
+            }
+        }
+        if (items.Count == 0) items.Add(new ClockCapsule());
+        return Host.Configure(Settings, items);
     }
     public static void OpenWebsite(string url)
     {
@@ -65,6 +93,7 @@ public partial class App : Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        Host?.Dispose();
         Monitor?.Dispose();
         mutex?.Dispose();
         base.OnExit(e);

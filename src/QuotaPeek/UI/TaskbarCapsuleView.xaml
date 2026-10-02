@@ -4,7 +4,7 @@
   <Border CornerRadius="16" Background="{StaticResource Canvas}" BorderBrush="{StaticResource Line}" BorderThickness="1">
     <Border.ContextMenu>
       <ContextMenu StaysOpen="False" Opened="ContextMenu_Opened">
-        <MenuItem Header="展开 / 收起额度卡片" Click="Expand_Click"/>
+        <MenuItem Header="展开 / 收起胶囊详情" Click="Expand_Click"/>
         <MenuItem Header="设置" Click="Settings_Click"/>
         <MenuItem Header="立即刷新" Click="Refresh_Click"/>
         <Separator/>
@@ -13,8 +13,8 @@
       </ContextMenu>
     </Border.ContextMenu>
     <Grid Margin="5,0,5,0">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="TaskbarMenuColumn" Width="26"/></Grid.ColumnDefinitions>
-      <Button x:Name="TaskbarExpandButton" Background="Transparent" Padding="6,0" Focusable="False" Click="Expand_Click" AutomationProperties.Name="展开或收起额度卡片">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition x:Name="TaskbarMenuColumn" Width="26"/></Grid.ColumnDefinitions>
+      <Button x:Name="TaskbarExpandButton" Background="Transparent" Padding="6,0" Focusable="False" Click="Expand_Click" AutomationProperties.Name="展开或收起胶囊详情">
         <Button.Template>
           <ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border></ControlTemplate>
         </Button.Template>
@@ -24,7 +24,8 @@
           <TextBlock x:Name="BalanceText" Grid.Column="2" FontSize="12" FontWeight="SemiBold" Margin="7,0,0,0" VerticalAlignment="Center"/>
         </Grid>
       </Button>
-      <Button x:Name="TaskbarMenuButton" Grid.Column="1" Background="Transparent" Padding="0" FontFamily="Segoe MDL2 Assets" Content="&#xE700;" FontSize="12" Foreground="{StaticResource Muted}" Focusable="False" Click="Menu_Click" AutomationProperties.Name="任务栏胶囊菜单"/>
+      <Button x:Name="TaskbarActionButton" Grid.Column="1" Visibility="Collapsed" Background="Transparent" Padding="4,0" FontSize="11" Click="Action_Click" AutomationProperties.Name="胶囊操作"/>
+      <Button x:Name="TaskbarMenuButton" Grid.Column="2" Background="Transparent" Padding="0" FontFamily="Segoe MDL2 Assets" Content="&#xE700;" FontSize="12" Foreground="{StaticResource Muted}" Focusable="False" Click="Menu_Click" AutomationProperties.Name="任务栏胶囊菜单"/>
     </Grid>
   </Border>
 </UserControl>

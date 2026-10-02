@@ -24,17 +24,13 @@ public partial class MainWindow : Window
     private readonly OutsideClickMonitor outsideClicks;
     private readonly Forms.ToolStripMenuItem taskbarMenu;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(15) };
-    private readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool expanded = true, locked, userHidden, fullscreenHidden, sessionLocked, sleeping, exiting;
     private (int X, int Y)? dragFrom;
     private (double X, double Y) dragWindow;
     private bool dragMoved, dragExpands;
     private string unlock = "托盘菜单";
     private bool rendered, positioned, loaded, dockMode;
-    private List<CardViewModel> capsuleCards = [];
-    private string? selectedProviderId, displayedProviderId;
     private int capsuleWheelDelta;
-    private bool clockSelected;
 
     public MainWindow(App app)
     {
@@ -46,7 +42,7 @@ public partial class MainWindow : Window
         tray = new Forms.NotifyIcon { Icon = trayIcon, Text = "QuotaPeek", Visible = true };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 隐藏", null, (_, _) => Dispatcher.Invoke(ToggleVisible));
-        menu.Items.Add("立即刷新", null, (_, _) => Dispatcher.InvokeAsync(async () => await app.Monitor.RefreshAsync(true)));
+        menu.Items.Add("立即刷新", null, (_, _) => Dispatcher.InvokeAsync(async () => await app.Host.Refresh(true)));
         menu.Items.Add("设置", null, (_, _) => Dispatcher.Invoke(app.OpenSettings));
         menu.Items.Add("锁定 / 解锁穿透", null, (_, _) => Dispatcher.Invoke(ToggleLock));
         taskbarMenu = new Forms.ToolStripMenuItem("嵌入左下角任务栏", null, (_, _) => Dispatcher.Invoke(() => SetTaskbarDocked(!dockMode)));
@@ -60,15 +56,12 @@ public partial class MainWindow : Window
         taskbar.View.MouseLeave += Capsule_MouseLeave;
         taskbar.View.UndockRequested += () => SetTaskbarDocked(false);
         taskbar.View.SettingsRequested += app.OpenSettings;
-        taskbar.View.RefreshRequested += async () => await app.Monitor.RefreshAsync(true);
+        taskbar.View.RefreshRequested += async () => await app.Host.Refresh(true);
         taskbar.View.ExitRequested += Exit;
         taskbar.PlacementChanged += UpdateVisibility;
-        app.Monitor.Changed += Render;
-        app.Monitor.LowQuota += NotifyLow;
-        clockTimer.Tick += (_, _) =>
-        {
-            if (clockSelected && !exiting) RenderCapsule();
-        };
+        app.Host.Changed += Render;
+        app.Host.Notification += Notify;
+        taskbar.View.ActionRequested += async id => await app.Host.RunAction(id);
         SourceInitialized += (_, _) =>
         {
             WindowNative.Configure(this, false);
@@ -82,11 +75,10 @@ public partial class MainWindow : Window
             if (loaded) return;
             loaded = true;
             CardsScroll.MaxHeight = Math.Max(160, Math.Min(560, SystemParameters.WorkArea.Height - 150));
-            SetExpanded(!app.Monitor.Settings.TaskbarDocked && app.Monitor.Settings.StartExpanded, false);
+            SetExpanded(!app.Settings.TaskbarDocked && app.Settings.StartExpanded, false);
             Render(); UpdateLayout();
             timer.Start();
-            clockTimer.Start();
-            await app.Monitor.RefreshAsync();
+            await app.Host.Refresh();
             CaptureRequested();
         };
         ContentRendered += (_, _) =>
@@ -98,7 +90,7 @@ public partial class MainWindow : Window
             SetExpanded(expanded, false);
             UpdateLayout();
             positioned = true;
-            WindowNative.Position(this, app.Monitor.Settings.LeftPixels, app.Monitor.Settings.TopPixels);
+            WindowNative.Position(this, app.Settings.LeftPixels, app.Settings.TopPixels);
             ApplyDockMode();
             if (!dockMode) SavePosition();
             UpdateOutsideClickMonitor();
@@ -108,7 +100,7 @@ public partial class MainWindow : Window
             if (!sessionLocked && !sleeping)
             {
                 CheckFullscreen();
-                await app.Monitor.RefreshAsync();
+                await app.Host.Refresh();
                 Render();
             }
         };
@@ -116,7 +108,7 @@ public partial class MainWindow : Window
         SystemEvents.PowerModeChanged += PowerChanged;
         SystemEvents.DisplaySettingsChanged += DisplayChanged;
         Closing += OnClosing;
-        if (app.Monitor.Demo) Subtitle.Text = "演示模式 · 非真实账户数据";
+        if (app.Demo) Subtitle.Text = "演示模式 · 非真实账户数据";
     }
 
     private void ContextMenu_Opened(object sender, RoutedEventArgs e) => WindowNative.ActivateMenu((ContextMenu)sender);
@@ -126,16 +118,14 @@ public partial class MainWindow : Window
         if (exiting) return;
         if (positioned) ApplyDockMode();
         var previous = positioned && !dockMode ? WindowNative.PixelPosition(this) : ((double X, double Y)?)null;
-        var cards = app.Monitor.Settings.Providers.Where(p => p.Enabled)
-            .Select(p => new CardViewModel(p, app.Monitor.Snapshots.GetValueOrDefault(p.Id), app.Monitor.History(p.Id))).ToList();
-        Cards.ItemsSource = ProviderCardViewModel.Group(cards);
-        EmptyText.Visibility = cards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        capsuleCards = cards;
+        CapsuleContent.Content = app.Host.Current?.ExpandedContent;
         RenderCapsule();
-        var tooltip = string.Join("\n", cards.Select(c => c.Name + " " + c.PrimaryValue + " · " + c.StatusText));
+        var current = app.Host.Current;
+        var tooltip = current?.Tooltip ?? "QuotaPeek";
         tray.Text = tooltip.Length > 120 ? tooltip[..120] : tooltip.Length == 0 ? "QuotaPeek" : tooltip;
-        FooterText.Text = app.Monitor.Demo ? "演示数据 · 仅用于预览" : locked ? "已锁定 · " + unlock + " 解锁" : app.Monitor.Paused ? "暂停刷新" : app.Monitor.IsRefreshing ? "正在同步…" : app.Monitor.Warning ?? "自动刷新 · 数据保存在本机";
-        RefreshButton.IsEnabled = !app.Monitor.IsRefreshing;
+        Subtitle.Text = current?.Title ?? "Capsules";
+        FooterText.Text = locked ? "已锁定 · " + unlock + " 解锁" : current?.Footer ?? "在设置中启用 Capsule";
+        RefreshButton.IsEnabled = current?.Status != CapsuleStatus.Busy;
         if (previous is { } position) { UpdateLayout(); WindowNative.Position(this, position.X, position.Y); }
         if (dockMode) UpdateVisibility();
     }
@@ -154,50 +144,32 @@ public partial class MainWindow : Window
 
     private void RenderCapsule()
     {
-        if (capsuleCards.Count == 0) clockSelected = true;
-        if (clockSelected)
-        {
-            var now = DateTime.Now;
-            var time = $"{now:yyyy-MM-dd} {now:HH:mm}";
-            var clockTooltip = now.ToString("yyyy-MM-dd dddd") + "\n本机时间";
-            displayedProviderId = null;
-            CapsuleText.Text = time;
-            CapsuleDot.Visibility = Visibility.Collapsed;
-            CapsuleGrip.Visibility = Visibility.Collapsed;
-            Grid.SetColumn(ExpandButton, 0);
-            Grid.SetColumnSpan(ExpandButton, 3);
-            ExpandButton.HorizontalContentAlignment = HorizontalAlignment.Center;
-            CapsuleText.HorizontalAlignment = HorizontalAlignment.Center;
-            CapsuleText.TextAlignment = TextAlignment.Center;
-            CapsuleText.FontSize = 15;
-            var clockBrush = (System.Windows.Media.Brush)FindResource("Muted");
-            Capsule.ToolTip = clockTooltip + "\n滚轮切换时间 / 钱包 / 额度 · 单击展开 · " + (dockMode ? "右键切换显示方式" : "按住拖动");
-            taskbar.View.Update("", time, clockBrush, clockTooltip, true);
-            return;
-        }
+        var current = app.Host.Current;
+        if (current is null) return;
+        var style = current.Appearance;
+        var color = (System.Windows.Media.Brush)new BrushConverter().ConvertFromString(current.StatusColor)!;
+        CapsuleText.Text = current.PrimaryText + (string.IsNullOrEmpty(current.SecondaryText) ? "" : "  " + current.SecondaryText);
+        CapsuleText.FontSize = style.FontSize;
+        CapsuleDot.Fill = color;
+        CapsuleDot.Visibility = style.ShowStatus ? Visibility.Visible : Visibility.Collapsed;
+        var action = current.Actions.FirstOrDefault();
+        CapsuleGrip.Visibility = !style.Centered && action is null ? Visibility.Visible : Visibility.Collapsed;
+        CapsuleActionButton.Visibility = action is null ? Visibility.Collapsed : Visibility.Visible;
+        CapsuleActionButton.Content = action?.Title;
+        CapsuleActionButton.IsEnabled = action?.Enabled == true;
+        CapsuleActionButton.Tag = action?.Id;
+        Grid.SetColumn(ExpandButton, style.Centered ? 0 : 1);
+        Grid.SetColumnSpan(ExpandButton, style.Centered && action is null ? 3 : 1);
+        ExpandButton.HorizontalContentAlignment = style.Centered ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        CapsuleText.TextAlignment = style.Centered ? TextAlignment.Center : TextAlignment.Left;
+        CapsuleText.HorizontalAlignment = style.Centered ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        Capsule.ToolTip = current.Tooltip + "\n滚轮切换 Capsule · 单击展开 · " + (dockMode ? "右键切换显示方式" : "按住拖动");
+        taskbar.View.Update(current, color);
+    }
 
-        CapsuleDot.Visibility = Visibility.Visible;
-        CapsuleGrip.Visibility = Visibility.Visible;
-        Grid.SetColumn(ExpandButton, 1);
-        Grid.SetColumnSpan(ExpandButton, 1);
-        ExpandButton.HorizontalContentAlignment = HorizontalAlignment.Left;
-        CapsuleText.HorizontalAlignment = HorizontalAlignment.Stretch;
-        CapsuleText.TextAlignment = TextAlignment.Left;
-        CapsuleText.FontSize = 13;
-
-        var selected = capsuleCards.FirstOrDefault(c => c.Config.Id == selectedProviderId);
-        // Keep manual selection across refreshes; fall back if its source was disabled or removed.
-        if (selected is null) selectedProviderId = null;
-        var current = selected ?? capsuleCards.OrderBy(c => c.Snapshot?.HasValue == true ? 0 : 1)
-            .ThenBy(c => c.Snapshot?.Status == SnapshotStatus.Stale ? 0 : 1)
-            .ThenBy(c => c.Snapshot?.Windows.Count > 0 ? (double)(c.Snapshot.Windows.Min(w => w.RemainingPercent) / Math.Max(1, c.Config.LowThreshold))
-                : c.Snapshot?.Remaining is { } money ? (double)(money / Math.Max(0.01m, c.Config.LowThreshold)) : double.MaxValue).FirstOrDefault();
-        displayedProviderId = current?.Config.Id;
-        CapsuleText.Text = current is null ? "QuotaPeek · 添加账户" : current.Name + "  " + current.PrimaryValue;
-        CapsuleDot.Fill = current?.StatusBrush ?? (System.Windows.Media.Brush)FindResource("Mint");
-        var tooltip = string.Join("\n", capsuleCards.Select(c => c.Name + " " + c.PrimaryValue + " · " + c.StatusText));
-        Capsule.ToolTip = tooltip + "\n滚轮切换时间 / 钱包 / 额度 · 单击展开 · " + (dockMode ? "右键切换显示方式" : "按住拖动");
-        taskbar.View.Update(current?.Name ?? "QuotaPeek", current?.PrimaryValue ?? "添加账户", CapsuleDot.Fill, tooltip);
+    private async void CapsuleAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (CapsuleActionButton.Tag is string id) await app.Host.RunAction(id);
     }
 
     private void Capsule_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -209,7 +181,7 @@ public partial class MainWindow : Window
 
     private void CycleCapsule(MouseWheelEventArgs e)
     {
-        var itemCount = capsuleCards.Count + 1; // Providers plus the local clock view.
+        var itemCount = app.Host.Capsules.Count;
         if (locked || dragFrom is not null || itemCount < 2 || e.Delta == 0) return;
         e.Handled = true;
         // Precision wheels can send fractions of a notch. Never jump for each tiny delta.
@@ -218,20 +190,13 @@ public partial class MainWindow : Window
         var steps = capsuleWheelDelta / Mouse.MouseWheelDeltaForOneLine;
         capsuleWheelDelta %= Mouse.MouseWheelDeltaForOneLine;
         if (steps == 0) return;
-        var index = clockSelected ? capsuleCards.Count : Math.Max(0, capsuleCards.FindIndex(c => c.Config.Id == displayedProviderId));
-        index = ((index - steps) % itemCount + itemCount) % itemCount;
-        clockSelected = index == capsuleCards.Count;
-        if (!clockSelected) selectedProviderId = capsuleCards[index].Config.Id;
-        RenderCapsule();
+        app.Host.Cycle(steps);
     }
 
-    private void NotifyLow(ProviderConfig config, QuotaSnapshot snapshot)
-    {
-        var text = snapshot.Kind == QuotaKind.RateWindow ? "剩余额度低于设置的阈值。" : "当前剩余 " + CardViewModel.Money(snapshot.Remaining, snapshot.Currency);
-        tray.ShowBalloonTip(6000, config.Name + " 额度提醒", text, Forms.ToolTipIcon.Warning);
-    }
+    private void Notify(string title, string message) => tray.ShowBalloonTip(6000, title, message, Forms.ToolTipIcon.Warning);
     private IntPtr Hook(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam, ref bool handled)
     {
+        if (message == 0x11 || message == 0x16 || (message == 0x218 && wparam.ToInt32() == 4)) app.Host.Pause();
         if (message == 0x21) { handled = true; return new IntPtr(3); } // MA_NOACTIVATE
         if (message == WindowNative.WmHotkey && wparam.ToInt32() == WindowNative.HotkeyId)
         {
@@ -250,7 +215,7 @@ public partial class MainWindow : Window
         if (positioned && !dockMode) WindowNative.ResizeAnchored(this, Resize); else { Resize(); UpdateLayout(); }
         if (remember && !dockMode)
         {
-            app.Monitor.Settings.StartExpanded = value;
+            app.Settings.StartExpanded = value;
             SavePosition();
         }
         if (dockMode) UpdateVisibility();
@@ -268,21 +233,21 @@ public partial class MainWindow : Window
     private void ToggleVisible() { userHidden = !userHidden; CheckFullscreen(); UpdateVisibility(); }
     private void CheckFullscreen()
     {
-        var hide = app.Monitor.Settings.AutoHideFullscreen && WindowNative.FullscreenApp();
+        var hide = app.Settings.AutoHideFullscreen && WindowNative.FullscreenApp();
         if (hide != fullscreenHidden) { fullscreenHidden = hide; UpdateVisibility(); }
     }
 
     private void SetTaskbarDocked(bool value)
     {
-        app.Monitor.Settings.TaskbarDocked = value;
+        app.Settings.TaskbarDocked = value;
         ApplyDockMode();
-        try { app.Store.Save(app.Monitor.Settings); }
+        try { app.Store.Save(app.Settings); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { FooterText.Text = "显示方式未保存：数据目录不可写"; }
     }
 
     private void ApplyDockMode()
     {
-        var value = app.Monitor.Settings.TaskbarDocked;
+        var value = app.Settings.TaskbarDocked;
         taskbarMenu.Checked = TaskbarDockMenu.IsChecked = value;
         if (dockMode == value) return;
         FinishDrag();
@@ -290,8 +255,8 @@ public partial class MainWindow : Window
         dockMode = value;
         RenderCapsule();
         taskbar.SetEnabled(value);
-        SetExpanded(!value && app.Monitor.Settings.StartExpanded, false);
-        if (!value) WindowNative.Position(this, app.Monitor.Settings.LeftPixels, app.Monitor.Settings.TopPixels);
+        SetExpanded(!value && app.Settings.StartExpanded, false);
+        if (!value) WindowNative.Position(this, app.Settings.LeftPixels, app.Settings.TopPixels);
         UpdateVisibility();
     }
 
@@ -316,15 +281,13 @@ public partial class MainWindow : Window
     {
         if (e.Reason == SessionSwitchReason.SessionLock) sessionLocked = true;
         if (e.Reason == SessionSwitchReason.SessionUnlock) sessionLocked = false;
-        app.Monitor.SetPaused(sessionLocked || sleeping);
-        if (!app.Monitor.Paused) await app.Monitor.RefreshAsync();
+        if (sessionLocked || sleeping) app.Host.Pause(); else await app.Host.Resume();
     });
     private void PowerChanged(object sender, PowerModeChangedEventArgs e) => Dispatcher.BeginInvoke(async () =>
     {
         if (e.Mode == PowerModes.Suspend) sleeping = true;
         if (e.Mode == PowerModes.Resume) sleeping = false;
-        app.Monitor.SetPaused(sessionLocked || sleeping);
-        if (!app.Monitor.Paused) await app.Monitor.RefreshAsync();
+        if (sessionLocked || sleeping) app.Host.Pause(); else await app.Host.Resume();
     });
     private void DisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() =>
     {
@@ -336,8 +299,8 @@ public partial class MainWindow : Window
     {
         if (!positioned || dockMode) return;
         var p = WindowNative.PixelPosition(this);
-        app.Monitor.Settings.LeftPixels = p.X; app.Monitor.Settings.TopPixels = p.Y;
-        try { app.Store.Save(app.Monitor.Settings); }
+        app.Settings.LeftPixels = p.X; app.Settings.TopPixels = p.Y;
+        try { app.Store.Save(app.Settings); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { FooterText.Text = "窗口位置未保存：数据目录不可写"; }
     }
     private void DragStart(object sender, MouseButtonEventArgs e)
@@ -398,7 +361,7 @@ public partial class MainWindow : Window
     private void Expand_Click(object sender, RoutedEventArgs e) => SetExpanded(true);
     private void Lock_Click(object sender, RoutedEventArgs e) => ToggleLock();
     private void Settings_Click(object sender, RoutedEventArgs e) => app.OpenSettings();
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await app.Monitor.RefreshAsync(true);
+    private async void Refresh_Click(object sender, RoutedEventArgs e) => await app.Host.Refresh(true);
     private void Exit_Click(object sender, RoutedEventArgs e) => Exit();
     private void TaskbarDock_Click(object sender, RoutedEventArgs e) => SetTaskbarDocked(TaskbarDockMenu.IsChecked);
     private void Exit() { exiting = true; app.Shutdown(); }
@@ -406,10 +369,10 @@ public partial class MainWindow : Window
     {
         outsideClicks.Dispose();
         FinishDrag();
-        SavePosition(); timer.Stop(); clockTimer.Stop(); taskbar.Dispose(); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
+        SavePosition(); timer.Stop(); taskbar.Dispose(); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
         WindowNative.Unregister(this);
         SystemEvents.SessionSwitch -= SessionSwitch; SystemEvents.PowerModeChanged -= PowerChanged; SystemEvents.DisplaySettingsChanged -= DisplayChanged;
-        app.Monitor.Changed -= Render; app.Monitor.LowQuota -= NotifyLow;
+        app.Host.Changed -= Render; app.Host.Notification -= Notify;
         if (!exiting) { exiting = true; app.Shutdown(); }
     }
     private static Icon LoadTrayIcon()

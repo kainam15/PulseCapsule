@@ -91,6 +91,11 @@ public sealed record AppSettings
     public double? TopPixels { get; set; }
     public bool StartExpanded { get; set; } = true;
     public bool TaskbarDocked { get; set; }
+    public List<CapsulePreference> Capsules { get; set; } = [new() { Id = "clock" }, new() { Id = "quota" }, new() { Id = "system" }];
+    public string? LastCapsuleId { get; set; }
+    public bool AutoRotate { get; set; }
+    public int CarouselSeconds { get; set; } = 15;
+    public SystemPreferences System { get; set; } = new();
 }
 
 public sealed class ProviderException(string message, TimeSpan? retryAfter = null) : Exception(message)

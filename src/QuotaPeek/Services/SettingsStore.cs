@@ -20,6 +20,9 @@ public sealed class SettingsStore
             if (settings.Version != 1 || settings.Providers is null || settings.Providers.Any(p => string.IsNullOrWhiteSpace(p.Id)) || settings.Providers.Select(p => p.Id).Distinct().Count() != settings.Providers.Count)
                 throw new JsonException();
             foreach (var provider in settings.Providers) provider.RefreshMinutes = Math.Clamp(provider.RefreshMinutes, 1, 1440);
+            settings.Capsules = CapsuleSelection.Normalize(settings.Capsules);
+            settings.System ??= new();
+            settings.CarouselSeconds = Math.Clamp(settings.CarouselSeconds, 5, 3600);
             return settings;
         }
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException)
