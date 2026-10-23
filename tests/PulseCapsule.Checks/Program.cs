@@ -17,59 +17,98 @@ void Throws(string name, Action action)
 }
 JsonElement Json(string text) { using var doc = JsonDocument.Parse(text); return doc.RootElement.Clone(); }
 var wget = ProviderConfig.Create(ProviderType.WgetCloud);
-Check("WgetCloud defaults to safe daily refresh with GB unit", wget.Currency == "GB" && wget.RefreshMinutes == 1440 && wget.NeedsSecret);
-Throws("WgetCloud disallows arbitrary subscription hosts", () => WgetCloudQuotaProvider.ValidateSubscriptionUrl("https://untrusted.example/subscribe"));
-Throws("WgetCloud disallows credential forwarding through redirects and custom ports", () => WgetCloudQuotaProvider.ValidateSubscriptionUrl("https://a.wgetcloud.online:444/subscribe"));
-Throws("WgetCloud disallows embedded username", () => WgetCloudQuotaProvider.ValidateSubscriptionUrl("https://user:pass@x.wgetcloud.online/sub"));
-Throws("WgetCloud blocks sibling domains", () => WgetCloudQuotaProvider.ValidateSubscriptionUrl("https://wgetcloud.online.evil.test/sub"));
-Check("WgetCloud accepts an HTTPS subdomain", WgetCloudQuotaProvider.ValidateSubscriptionUrl("https://abc.wgetcloud.online/sub").Host == "abc.wgetcloud.online");
-var expiresAt = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();
-var quotaHeader = $"upload=1073741824; download=12884901888; total=386547056640; expire={expiresAt}";
+Check("WgetCloud defaults to a non-subscription account setup", wget.Currency == "GB" && wget.RefreshMinutes == 1440
+    && wget.Http.Url.Length == 0 && wget.SecretEnvironment == "WGETCLOUD_SESSION_COOKIE");
+Throws("WgetCloud refuses subscription URL", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://a.wgetcloud.online/link/test", false));
+Throws("WgetCloud refuses a dashboard subscription route", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://x.wgetcloud.org/user/subscribe", false));
+Throws("WgetCloud rejects offsite fake domain", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://wgetcloud.org.evil.test/user/log_month", false));
+Throws("WgetCloud refuses URL query tokens", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://x.wgetcloud.org/user/log_month?token=abc", false));
+Throws("WgetCloud refuses a POST to unknown route", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://x.wgetcloud.org/user/traffic", true));
+Check("WgetCloud allows account traffic POST", WgetCloudQuotaProvider.ValidateDashboardUrl("https://x.wgetcloud.org/user/log_month", true).AbsolutePath == "/user/log_month");
+Check("WgetCloud rejects old URL as cookie", !WgetCloudQuotaProvider.IsSessionCookie("https://a.wgetcloud.online/link/secret")
+    && WgetCloudQuotaProvider.IsSessionCookie("session=local-test-cookie; other=test-value"));
 var wgetRequests = 0;
+using (var provider = new WgetCloudQuotaProvider(new FakeHandler(_ =>
+{
+    wgetRequests++;
+    throw new Exception("Unconfigured WgetCloud attempted a network request");
+})))
+{
+    var missingConfig = await provider.FetchAsync(wget, "session=test-only", default);
+    Check("WgetCloud without API JSON fields is setup and stays offline", missingConfig.Status == SnapshotStatus.Setup && !missingConfig.HasValue);
+    var oldCredential = await provider.FetchAsync(wget, "https://a.wgetcloud.online/link/old-secret", default);
+    Check("WgetCloud legacy subscription credential is refused locally", oldCredential.Status == SnapshotStatus.Setup &&
+        !oldCredential.Message!.Contains("old-secret") && wgetRequests == 0);
+}
+var apiConfig = wget with { Http = new() {
+    Url = "https://x.wgetcloud.org/user/log_month",
+    RemainingPath = "$.data.remaining", UsedPath = "$.data.used", TotalPath = "$.data.total"
+}, WgetCloudUsePost = true };
 using (var provider = new WgetCloudQuotaProvider(new FakeHandler(request =>
 {
     wgetRequests++;
-    Check("WgetCloud only GETs configured subscription link without cookies or Authorization",
-        request.Method == HttpMethod.Get && request.RequestUri!.Host == "abc.wgetcloud.online"
-        && request.Headers.Authorization is null && !request.Headers.Contains("Cookie"));
-    Check("WgetCloud uses Clash-compatible User-Agent", request.Headers.UserAgent.ToString().Contains("clash", StringComparison.OrdinalIgnoreCase));
-    var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("NOT A NODE CONFIG") };
-    response.Headers.TryAddWithoutValidation("subscription-userinfo", quotaHeader);
-    return response;
+    Check("WgetCloud only sends POST to user-center statistic endpoint",
+        request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == "/user/log_month"
+        && request.Headers.GetValues("Cookie").Single() == "session=test-only");
+    Check("WgetCloud does not read subscription URLs", !request.RequestUri!.ToString().Contains("/link/"));
+    return new(HttpStatusCode.OK) { Content = new StringContent(
+        """{"success":true,"data":{"remaining":347.16,"used":12.84,"total":360}}""") };
 })))
 {
-    var emptyWget = await provider.FetchAsync(wget, null, default);
-    Check("WgetCloud with no secret is setup, not a fabricated balance", emptyWget.Status == SnapshotStatus.Setup && !emptyWget.HasValue);
-    var value = await provider.FetchAsync(wget, "https://abc.wgetcloud.online/sub?token=fake-test", default);
-    Check("WgetCloud correctly converts upload plus download to GB", value.Used == 13m && value.Total == 360m && value.Remaining == 347m);
-    Check("WgetCloud parses expiration without inventing reset date", value.ExpiresAt?.ToUnixTimeSeconds() == expiresAt && value.Windows.Count == 0);
-    var card = new CardViewModel(wget, value, []);
-    Check("WgetCloud shows traffic units rather than currency", card.PrimaryValue == "347.00 GB"
-        && card.PrimaryLabel == "剩余流量" && card.SecondaryText.Contains("360.00 GB")
-        && card.Message!.Contains("套餐到期"));
-    Check("WgetCloud does not call network when no credential", wgetRequests == 1);
+    var result = await provider.FetchAsync(apiConfig, "session=test-only", default);
+    Check("WgetCloud account JSON parses precise GB values", result.Remaining == 347.16m && result.Used == 12.84m
+        && result.Total == 360m && result.Currency == "GB");
+    var card = new CardViewModel(apiConfig, result, []);
+    Check("WgetCloud displays GB rather than money", card.PrimaryValue == "347.16 GB"
+        && card.SecondaryText.Contains("360.00 GB"));
 }
-Throws("WgetCloud rejects incomplete headers", () => WgetCloudQuotaProvider.ParseSubscriptionUserInfo(wget, ["total=100"]));
-Throws("WgetCloud rejects duplicate quota fields", () => WgetCloudQuotaProvider.ParseSubscriptionUserInfo(wget, ["upload=1; upload=2;download=1;total=10"]));
-Throws("WgetCloud rejects a zero total", () => WgetCloudQuotaProvider.ParseSubscriptionUserInfo(wget, ["upload=1;download=1;total=0"]));
-Throws("WgetCloud rejects malformed numbers", () => WgetCloudQuotaProvider.ParseSubscriptionUserInfo(wget, ["upload=-1;download=1;total=10"]));
-Check("WgetCloud clamps overused quota to zero without losing used bytes",
-    WgetCloudQuotaProvider.ParseSubscriptionUserInfo(wget, ["upload=20;download=10;total=10"]).Remaining == 0);
-using (var denied = new WgetCloudQuotaProvider(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden))))
+Check("WgetCloud requested the dashboard exactly once", wgetRequests == 1);
+var bytesConfig = apiConfig with { WgetCloudValuesAreBytes = true,
+    Http = apiConfig.Http with { RemainingPath = "", UsedPath = "$.data.upload", TotalPath = "$.data.total" } };
+var parsed = WgetCloudQuotaProvider.ParseDashboardJson(bytesConfig,
+    Json("""{"data":{"upload":13851269529.6,"total":386547056640}}"""));
+Check("WgetCloud converts bytes and derives remaining", parsed.Total == 360m && parsed.Used == 12.9m && parsed.Remaining == 347.1m);
+Throws("WgetCloud rejects mismatched quota fields", () => WgetCloudQuotaProvider.ParseDashboardJson(apiConfig,
+    Json("""{"data":{"remaining":350,"used":20,"total":360}}""")));
+Throws("WgetCloud rejects business API failure", () => WgetCloudQuotaProvider.ParseDashboardJson(apiConfig,
+    Json("""{"success":false,"data":{"remaining":1,"used":2,"total":3}}""")));
+using (var provider = new WgetCloudQuotaProvider(new FakeHandler(_ => new(HttpStatusCode.Redirect))))
 {
-    try { await denied.FetchAsync(wget, "https://abc.wgetcloud.online/sub?token=not-real", default); throw new Exception("WgetCloud unexpectedly allowed forbidden response"); }
-    catch (ProviderException e) { Check("WgetCloud 403 explains manual subscription switch without credential leakage", e.Message.Contains("手动开启") && !e.Message.Contains("not-real")); }
+    try { await provider.FetchAsync(apiConfig, "session=private-cookie", default); throw new Exception("Redirect unexpectedly followed"); }
+    catch (ProviderException e) { Check("WgetCloud disallows redirect without leaking session", e.Message.Contains("重定向")
+        && !e.Message.Contains("private-cookie")); }
 }
-using (var redirected = new WgetCloudQuotaProvider(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.Redirect))))
+
+var dashboard = wget with { Http = new() { Url = "https://abc.wgetcloud.org/user/traffic",
+    RemainingPath = "$.data.remaining", UsedPath = "$.data.used", TotalPath = "$.data.total" } };
+var accountCalls = 0;
+using (var account = new WgetCloudQuotaProvider(new FakeHandler(request =>
 {
-    try { await redirected.FetchAsync(wget, "https://abc.wgetcloud.online/sub?token=not-real", default); throw new Exception("WgetCloud unexpectedly followed redirect"); }
-    catch (ProviderException e) { Check("WgetCloud never follows redirect with secret URL", e.Message.Contains("重定向") && !e.Message.Contains("not-real")); }
-}
-using (var noHeader = new WgetCloudQuotaProvider(new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))))
+    accountCalls++;
+    Check("WgetCloud only queries user-center JSON", request.Method == HttpMethod.Get &&
+        request.RequestUri!.Host == "abc.wgetcloud.org" && request.RequestUri.AbsolutePath == "/user/traffic");
+    Check("WgetCloud supplies session Cookie to allowed origin", request.Headers.TryGetValues("Cookie", out var cookies)
+        && cookies.Single() == "session=test-value");
+    return new HttpResponseMessage(HttpStatusCode.OK)
+    { Content = new StringContent("""{"success":true,"data":{"remaining":347.16,"used":12.84,"total":360}}""") };
+})))
 {
-    try { await noHeader.FetchAsync(wget, "https://abc.wgetcloud.online/sub", default); throw new Exception("WgetCloud accepted missing quota header"); }
-    catch (ProviderException e) { Check("WgetCloud does not invent quota when header missing", e.Message.Contains("subscription-userinfo")); }
+    var result = await account.FetchAsync(dashboard, "session=test-value", default);
+    Check("WgetCloud dashboard uses correct quota", result.Remaining == 347.16m && result.Used == 12.84m && result.Total == 360m);
+    Check("WgetCloud user-center query never requests subscription", accountCalls == 1);
 }
+using (var blocked = new WgetCloudQuotaProvider(new FakeHandler(_ => throw new Exception("Subscription request forbidden"))))
+{
+    var missing = await blocked.FetchAsync(wget, "session=test-value", default);
+    Check("WgetCloud unconfigured account never connects", missing.Status == SnapshotStatus.Setup);
+    var old = await blocked.FetchAsync(dashboard, "https://abc.wgetcloud.online/link/private", default);
+    Check("WgetCloud old subscription credential never connects", old.Status == SnapshotStatus.Setup);
+}
+Throws("WgetCloud rejects a subscription endpoint", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://abc.wgetcloud.org/link/x", false));
+Throws("WgetCloud rejects a non-account GET path", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://abc.wgetcloud.org/user/reset", false));
+Throws("WgetCloud rejects unsafe POST", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://abc.wgetcloud.org/user/traffic", true));
+Throws("WgetCloud prevents credential-bearing redirects", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://wgetcloud.org@evil.example/user/traffic", false));
+Throws("WgetCloud rejects query parameters", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://abc.wgetcloud.org/user/traffic?key=x", false));
 var hone = ProviderConfig.Create(ProviderType.Hone);
 var wallet = ProviderConfig.Create(ProviderType.HoneWallet);
 var walletRequests = new List<string>();

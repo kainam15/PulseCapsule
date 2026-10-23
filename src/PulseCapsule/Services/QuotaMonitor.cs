@@ -105,10 +105,12 @@ public sealed class QuotaMonitor : IDisposable
             if (secret is null && !string.IsNullOrWhiteSpace(config.SecretEnvironment)) secret = Environment.GetEnvironmentVariable(config.SecretEnvironment);
             IQuotaProvider provider = config.Type switch { ProviderType.Codex => codex, ProviderType.WgetCloud => wgetCloud, _ => http };
             var snapshot = await provider.FetchAsync(config, secret, token.Token);
+            if (snapshot.Status == SnapshotStatus.Setup && Snapshots.TryGetValue(config.Id, out var earlier) && earlier.HasValue)
+                snapshot = earlier with { Status = SnapshotStatus.Stale, Message = snapshot.Message, AttemptedAt = DateTimeOffset.UtcNow };
             if (version != generation || token.IsCancellationRequested) return;
             failures[config.Id] = 0;
             due[config.Id] = DateTimeOffset.UtcNow.AddMinutes(Math.Clamp(config.RefreshMinutes, config.Type == ProviderType.WgetCloud ? 60 : 1, 1440));
-            if (snapshot.Kind is QuotaKind.Balance or QuotaKind.Limit && snapshot.Remaining.HasValue && config.Type != ProviderType.Manual)
+            if (snapshot.Kind is QuotaKind.Balance or QuotaKind.Limit && snapshot.Remaining.HasValue && config.Type != ProviderType.Manual && snapshot.Status == SnapshotStatus.Ok)
             {
                 var points = History(config.Id);
                 points.Add(snapshot);

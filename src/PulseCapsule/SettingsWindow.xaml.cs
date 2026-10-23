@@ -60,10 +60,17 @@ public partial class SettingsWindow : Window
         RemainingPathInput.Text = p.Http.RemainingPath; UsedPathInput.Text = p.Http.UsedPath; TotalPathInput.Text = p.Http.TotalPath;
         MultiplierInput.Text = p.Http.Multiplier.ToString(CultureInfo.InvariantCulture);
         HeadersInput.Text = JsonSerializer.Serialize(p.Http.Headers, SettingsStore.Json);
+        WgetCloudEndpointInput.Text = p.Type == ProviderType.WgetCloud ? p.Http.Url : "";
+        WgetCloudRemainingInput.Text = p.Type == ProviderType.WgetCloud ? p.Http.RemainingPath : "";
+        WgetCloudUsedInput.Text = p.Type == ProviderType.WgetCloud ? p.Http.UsedPath : "";
+        WgetCloudTotalInput.Text = p.Type == ProviderType.WgetCloud ? p.Http.TotalPath : "";
+        WgetCloudPostCheck.IsChecked = p.WgetCloudUsePost;
+        WgetCloudBytesCheck.IsChecked = p.WgetCloudValuesAreBytes;
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
-        KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "私人订阅地址", _ => "API key" };
+        KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "用户中心会话 Cookie", _ => "API key" };
         HoneWalletFields.Visibility = p.Type == ProviderType.HoneWallet ? Visibility.Visible : Visibility.Collapsed;
         WgetCloudFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Visible : Visibility.Collapsed;
+        ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
         EndpointFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
         ConnectWalletFields.Visibility = p.Type == ProviderType.Hone ? Visibility.Visible : Visibility.Collapsed;
         DeleteKeyButton.Visibility = ApiFields.Visibility;
@@ -76,9 +83,9 @@ public partial class SettingsWindow : Window
         try { KeyHint.Text = app.Credentials.Read(p.Id) is null ? p.Type switch
             {
                 ProviderType.HoneWallet => "尚未连接钱包；填写账户访问令牌或使用环境变量。",
-                ProviderType.WgetCloud => "尚未保存订阅地址；打开官网订阅开关后复制链接，粘贴到此处。",
+                ProviderType.WgetCloud => "需在官网登录后，从开发者工具中确认只读 JSON 接口和会话 Cookie；不要填订阅地址或密码。",
                 _ => "尚未保存密钥；可填写 key 或使用环境变量。"
-            } : p.Type == ProviderType.WgetCloud ? "订阅地址已安全保存；留空保留原地址。" : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
+            } : p.Type == ProviderType.WgetCloud ? "已保存凭据；旧版保存的订阅链接不会被发送，请输入用户中心 Cookie 替换。" : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
         catch { KeyHint.Text = "Windows 凭据管理器暂不可用。"; }
         EditorScroll.ScrollToTop();
     }
@@ -100,8 +107,22 @@ public partial class SettingsWindow : Window
         config.CodexExecutable = CodexPathInput.Text.Trim();
         if (config.Type == ProviderType.Codex) config.Currency = "";
         if (config.Type == ProviderType.WgetCloud) config.Currency = "GB";
-        if (config.Type == ProviderType.WgetCloud && KeyInput.Password.Length > 0)
-            WgetCloudQuotaProvider.ValidateSubscriptionUrl(KeyInput.Password.Trim());
+        if (config.Type == ProviderType.WgetCloud)
+        {
+            config.Http.Url = WgetCloudEndpointInput.Text.Trim();
+            config.Http.RemainingPath = WgetCloudRemainingInput.Text.Trim();
+            config.Http.UsedPath = WgetCloudUsedInput.Text.Trim();
+            config.Http.TotalPath = WgetCloudTotalInput.Text.Trim();
+            config.WgetCloudUsePost = WgetCloudPostCheck.IsChecked == true;
+            config.WgetCloudValuesAreBytes = WgetCloudBytesCheck.IsChecked == true;
+            if (config.Http.Url.Length > 0)
+                WgetCloudQuotaProvider.ValidateDashboardUrl(config.Http.Url, config.WgetCloudUsePost);
+            using var empty = JsonDocument.Parse("{}");
+            foreach (var path in new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath })
+                if (path.Length > 0) JsonFields.Get(empty.RootElement, path);
+            if (KeyInput.Password.Length > 0 && !WgetCloudQuotaProvider.IsSessionCookie(KeyInput.Password.Trim()))
+                throw new ProviderException("请填写有效的会话 Cookie（name=value），不能使用订阅链接或密码。");
+        }
         if (config.NeedsSecret && config.Type != ProviderType.WgetCloud)
         {
             var url = BaseUrlInput.Text.Trim();
@@ -145,7 +166,7 @@ public partial class SettingsWindow : Window
                     throw new ProviderException("请求头中请用 {key} 引用密钥，不要写入实际 key。");
         }
         var endpointChanged = config.BaseUrl != selected.BaseUrl || config.Http.Url != selected.Http.Url;
-        if (endpointChanged && config.NeedsSecret && KeyInput.Password.Length == 0 && app.Credentials.Read(selected.Id) is not null)
+        if (endpointChanged && config.NeedsSecret && KeyInput.Password.Length == 0 && app.Credentials.Read(selected.Id) is not null && config.Type != ProviderType.WgetCloud)
             throw new ProviderException("接口地址已改变，请重新输入该地址对应的 key。");
         return config;
     }
