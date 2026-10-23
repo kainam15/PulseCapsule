@@ -32,11 +32,11 @@
             <StackPanel x:Name="ApiFields">
               <StackPanel x:Name="EndpointFields"><TextBlock Text="API 地址" Foreground="{StaticResource Muted}"/><TextBox x:Name="BaseUrlInput"/></StackPanel>
               <StackPanel x:Name="WgetCloudFields" Visibility="Collapsed" Margin="0,0,0,12">
-                <TextBlock Text="只读取官网用户中心数据，不访问订阅链接。第一次通过内置窗口登录后，程序自动保存该窗口的会话 Cookie；不读取 Chrome 密码或 Cookie。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+                <TextBlock Text="只读取官网用户中心数据，不访问订阅链接。首次在独立浏览器窗口登录一次，之后自动复用这个浏览器保存的登录状态；不读取 Chrome Cookie，也不导出登录 Cookie。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <TextBlock Text="用户中心地址（HTTPS，结尾为 /user）" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/>
                 <TextBox x:Name="WgetCloudEndpointInput" ToolTip="使用 WgetCloud 官网用户中心地址；不接受订阅地址"/>
                 <Button x:Name="WgetCloudLoginButton" Content="登录并连接 WgetCloud（无需复制 Cookie）" Click="WgetCloudLogin_Click" HorizontalAlignment="Left" Margin="0,12,0,5"/>
-                <TextBlock Text="专用 WebView2 浏览器会记住登录状态；如果网站会话失效，重新点击登录即可。不会自动登录或绕过两步验证。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+                <TextBlock Text="流量验证和后续刷新都在专用 WebView2 浏览器会话中完成，不会把 Cookie 复制到独立 HTTP 客户端；网站会话失效时可重新登录。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <Expander Header="高级：自定义 JSON 统计接口" Margin="0,12,0,0" IsExpanded="False">
                   <StackPanel Margin="0,8,0,0">
                     <CheckBox x:Name="WgetCloudPostCheck" Content="POST 请求（仅 /user/log_month）" Margin="0,8"/>
@@ -54,7 +54,7 @@
               </StackPanel>
               <TextBlock x:Name="KeyLabel" Text="API key" Foreground="{StaticResource Muted}"/><PasswordBox x:Name="KeyInput"/>
               <TextBlock x:Name="KeyHint" Text="仅在本机保存，不会显示已有 key。" Foreground="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,13"/>
-              <TextBlock Text="或从此环境变量读取" Foreground="{StaticResource Muted}"/><TextBox x:Name="EnvironmentInput"/>
+              <TextBlock x:Name="EnvironmentLabel" Text="或从此环境变量读取" Foreground="{StaticResource Muted}"/><TextBox x:Name="EnvironmentInput"/>
               <StackPanel x:Name="ConnectWalletFields" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock Text="这里查询 API key 账单。需要账户钱包余额，请单独连接钱包。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <Button x:Name="ConnectWalletButton" Content="＋ 连接钱包余额" Click="ConnectWallet_Click" HorizontalAlignment="Left" Margin="0,8,0,0"/>

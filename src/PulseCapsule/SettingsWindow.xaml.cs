@@ -70,6 +70,9 @@ public partial class SettingsWindow : Window
         KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "用户中心会话 Cookie（可不填）", _ => "API key" };
         HoneWalletFields.Visibility = p.Type == ProviderType.HoneWallet ? Visibility.Visible : Visibility.Collapsed;
         WgetCloudFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Visible : Visibility.Collapsed;
+        var browserLinked = p.Type == ProviderType.WgetCloud && p.WgetCloudUseBrowserSession;
+        KeyLabel.Visibility = KeyInput.Visibility = KeyHint.Visibility = browserLinked ? Visibility.Collapsed : Visibility.Visible;
+        EnvironmentLabel.Visibility = EnvironmentInput.Visibility = browserLinked ? Visibility.Collapsed : Visibility.Visible;
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
         EndpointFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
         ConnectWalletFields.Visibility = p.Type == ProviderType.Hone ? Visibility.Visible : Visibility.Collapsed;
@@ -220,30 +223,29 @@ public partial class SettingsWindow : Window
             if (app.Monitor.Demo) throw new ProviderException("演示模式不连接真实账户。");
 
             var login = new WgetCloudLoginWindow(config) { Owner = this };
-            if (login.ShowDialog() != true || login.ApprovedCookie is not { Length: > 0 } cookie)
+            if (login.ShowDialog() != true || login.ApprovedSnapshot is not { HasValue: true } verified)
             {
-                StatusText.Text = "尚未授权；原有账户设置保持不变。";
+                StatusText.Text = "尚未连接；原有账户设置保持不变。";
                 return;
             }
 
+            // Persist only mode + dashboard URL, never a copied raw browser Cookie.
+            config.WgetCloudUseBrowserSession = true;
+            config.WgetCloudUsePost = false;
+            config.SecretEnvironment = "";
             var old = selected!;
             var changed = config.Http.Url != old.Http.Url || config.BaseUrl != old.BaseUrl;
             if (changed) config.Id = Guid.NewGuid().ToString("N");
             var index = working.Providers.IndexOf(old);
-            app.Credentials.Write(config.Id, cookie);
             working.Providers[index] = config;
             try { Commit(config.Id); }
-            catch
-            {
-                working.Providers[index] = old;
-                if (changed) app.Credentials.Delete(config.Id);
-                throw;
-            }
-            if (changed) app.Credentials.Delete(old.Id);
+            catch { working.Providers[index] = old; throw; }
+            // Old WgetCloud credentials are not required by browser-profile mode.
+            app.Credentials.Delete(old.Id);
             drafts.Remove(old.Id);
             KeyInput.Clear();
             ReloadList(config.Id);
-            StatusText.Text = "WgetCloud 已连接，Cookie 已自动保存在 Windows 凭据管理器，之后正常自动刷新。";
+            StatusText.Text = "连接成功 · 剩余流量 " + CardViewModel.Money(verified.Remaining, "GB") + "。以后使用内置浏览器会话自动刷新。";
             await app.Monitor.RefreshAsync(true);
         }
         catch (OperationCanceledException) { }
@@ -263,7 +265,14 @@ public partial class SettingsWindow : Window
             StatusText.Text = "正在读取额度…";
             using var http = new HttpQuotaProvider();
             using var wgetCloud = new WgetCloudQuotaProvider();
-            IQuotaProvider provider = config.Type switch { ProviderType.Codex => new CodexQuotaProvider(), ProviderType.WgetCloud => wgetCloud, _ => http };
+            using var browserQuota = new WgetCloudBrowserQuotaProvider();
+            IQuotaProvider provider = config.Type switch
+            {
+                ProviderType.Codex => new CodexQuotaProvider(),
+                ProviderType.WgetCloud when config.WgetCloudUseBrowserSession => browserQuota,
+                ProviderType.WgetCloud => wgetCloud,
+                _ => http
+            };
             var snapshot = await provider.FetchAsync(config, key, lifetime.Token);
             var card = new CardViewModel(config, snapshot, []);
             StatusText.Text = snapshot.Status == SnapshotStatus.Setup ? snapshot.Message : "连接成功 · " + card.PrimaryLabel + " " + card.PrimaryValue + "。点击保存后开始自动刷新。";
@@ -277,13 +286,15 @@ public partial class SettingsWindow : Window
         try
         {
             var config = ReadForm(); var old = selected!;
-            var newKey = KeyInput.Password.Trim();
+            var newKey = config.Type == ProviderType.WgetCloud && config.WgetCloudUseBrowserSession
+                ? "" : KeyInput.Password.Trim();
             // Start a fresh history stream when account identity or units change.
             var identityChanged = newKey.Length > 0 || config.BaseUrl != old.BaseUrl || config.Http.Url != old.Http.Url || config.Currency != old.Currency
                 || config.CodexExecutable != old.CodexExecutable || config.UsageMultiplier != old.UsageMultiplier || config.SecretEnvironment != old.SecretEnvironment
                 || JsonSerializer.Serialize(config.Http) != JsonSerializer.Serialize(old.Http);
             if (identityChanged) config.Id = Guid.NewGuid().ToString("N");
-            var retainedKey = newKey.Length > 0 ? newKey : identityChanged ? app.Credentials.Read(old.Id) : null;
+            var retainedKey = config.Type == ProviderType.WgetCloud && config.WgetCloudUseBrowserSession
+                ? null : newKey.Length > 0 ? newKey : identityChanged ? app.Credentials.Read(old.Id) : null;
             if (config.NeedsSecret && retainedKey is { Length: > 0 }) app.Credentials.Write(config.Id, retainedKey);
             var index = working.Providers.IndexOf(old); working.Providers[index] = config;
             try { Commit(config.Id); }

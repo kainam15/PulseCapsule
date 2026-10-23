@@ -60,6 +60,7 @@ public sealed record ProviderConfig
     public decimal UsageMultiplier { get; set; } = 0.01m;
     public decimal? Budget { get; set; }
     public bool WgetCloudUsePost { get; set; }
+    public bool WgetCloudUseBrowserSession { get; set; }
     public bool WgetCloudValuesAreBytes { get; set; }
     public decimal? ManualRemaining { get; set; }
     public decimal? ManualUsed { get; set; }

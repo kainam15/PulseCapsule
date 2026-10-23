@@ -10,6 +10,7 @@ public sealed class QuotaMonitor : IDisposable
     private readonly HttpQuotaProvider http = new();
     private readonly CodexQuotaProvider codex = new();
     private readonly WgetCloudQuotaProvider wgetCloud = new();
+    private readonly WgetCloudBrowserQuotaProvider wgetCloudBrowser = new();
     private readonly SemaphoreSlim slots = new(2);
     private CancellationTokenSource pause = new();
     private readonly CancellationTokenSource lifetime = new();
@@ -103,7 +104,13 @@ public sealed class QuotaMonitor : IDisposable
             attempted[config.Id] = now;
             var secret = config.NeedsSecret ? credentials.Read(config.Id) : null;
             if (secret is null && !string.IsNullOrWhiteSpace(config.SecretEnvironment)) secret = Environment.GetEnvironmentVariable(config.SecretEnvironment);
-            IQuotaProvider provider = config.Type switch { ProviderType.Codex => codex, ProviderType.WgetCloud => wgetCloud, _ => http };
+            IQuotaProvider provider = config.Type switch
+            {
+                ProviderType.Codex => codex,
+                ProviderType.WgetCloud when config.WgetCloudUseBrowserSession => wgetCloudBrowser,
+                ProviderType.WgetCloud => wgetCloud,
+                _ => http
+            };
             var snapshot = await provider.FetchAsync(config, secret, token.Token);
             if (snapshot.Status == SnapshotStatus.Setup && Snapshots.TryGetValue(config.Id, out var earlier) && earlier.HasValue)
                 snapshot = earlier with { Status = SnapshotStatus.Stale, Message = snapshot.Message, AttemptedAt = DateTimeOffset.UtcNow };
@@ -171,5 +178,5 @@ public sealed class QuotaMonitor : IDisposable
                     Scope = "演示数据", FetchedAt = now, EstimatedDays = 18.4m };
     }
 
-    public void Dispose() { lifetime.Cancel(); pause.Cancel(); http.Dispose(); wgetCloud.Dispose(); }
+    public void Dispose() { lifetime.Cancel(); pause.Cancel(); http.Dispose(); wgetCloud.Dispose(); wgetCloudBrowser.Dispose(); }
 }

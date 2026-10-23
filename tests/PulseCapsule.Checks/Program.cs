@@ -159,6 +159,14 @@ Check("isolated WgetCloud login blocks authentication exfiltration", !WgetCloudL
     "https://abc.wgetcloud.org@evil.example/login"));
 Check("isolated WgetCloud login blocks reset paths", !WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
     "https://abc.wgetcloud.org/user/reset"));
+var browserSessionConfig = wget with { WgetCloudUseBrowserSession = true };
+Check("WgetCloud browser session mode can be persisted in provider configuration",
+    JsonSerializer.Deserialize<ProviderConfig>(
+        JsonSerializer.Serialize(browserSessionConfig, SettingsStore.Json), SettingsStore.Json)!
+        .WgetCloudUseBrowserSession);
+Check("WgetCloud browser HTML mode understands normalized visible page text",
+    WgetCloudQuotaProvider.ParseDashboardHtml(wget,
+        "WgetCloud 用户中心\n已使用/总流量：14.21/360 G\n重置日期：2026-11-17").Remaining == 345.79m);
 var hone = ProviderConfig.Create(ProviderType.Hone);
 var wallet = ProviderConfig.Create(ProviderType.HoneWallet);
 var walletRequests = new List<string>();

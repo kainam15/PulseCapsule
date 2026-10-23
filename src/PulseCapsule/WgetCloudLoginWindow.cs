@@ -1,6 +1,4 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
+
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -34,7 +32,7 @@ public sealed class WgetCloudLoginWindow : Window
     };
     private readonly Button cancel = new() { Content = "取消", Padding = new Thickness(18, 10, 18, 10), Margin = new Thickness(8) };
     private readonly CancellationTokenSource lifetime = new();
-    public string? ApprovedCookie { get; private set; }
+    public QuotaSnapshot? ApprovedSnapshot { get; private set; }
 
     public WgetCloudLoginWindow(ProviderConfig config)
     {
@@ -86,10 +84,7 @@ public sealed class WgetCloudLoginWindow : Window
     {
         try
         {
-            var hostHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(dashboard.Host)))[..16];
-            var profile = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "PulseCapsule", "WgetCloudBrowser", hostHash);
+            var profile = WgetCloudBrowserSession.ProfileDirectory(dashboard);
             Directory.CreateDirectory(profile);
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: profile);
             if (lifetime.IsCancellationRequested) return;
@@ -122,22 +117,12 @@ public sealed class WgetCloudLoginWindow : Window
         try
         {
             if (browser.CoreWebView2 is null) throw new ProviderException("内置浏览器尚未准备好。");
-            var cookies = await browser.CoreWebView2.CookieManager.GetCookiesAsync(dashboard.AbsoluteUri);
-            var header = string.Join("; ", cookies
-                .Where(c => c.Name.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-')
-                    && c.Value.IndexOfAny(['\r', '\n', ';']) < 0)
-                .OrderByDescending(c => c.Path.Length)
-                .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
-                .Select(c => c.Name + "=" + c.Value));
-            if (!WgetCloudQuotaProvider.IsSessionCookie(header))
-                throw new ProviderException("还没有读取到有效的用户中心会话。请先完成网页登录。");
-            // Verify the session using the same restricted account-only GET, not a subscription URL.
-            using var api = new WgetCloudQuotaProvider();
-            var result = await api.FetchAsync(config, header, lifetime.Token);
+            // Verify the visible page using its real browser session. Do not export Cookie
+            // headers to a separate HTTP stack, which can be blocked by site protections.
+            var result = await WgetCloudBrowserSession.ReadPageAsync(browser, config, lifetime.Token);
             if (result.Status != SnapshotStatus.Ok || !result.HasValue)
-                throw new ProviderException("用户中心尚未返回流量。请确认网页已登录并显示套餐。");
-            ApprovedCookie = header;
+                throw new ProviderException("用户中心尚未显示有效的套餐流量。");
+            ApprovedSnapshot = result;
             DialogResult = true;
         }
         catch (OperationCanceledException) { }

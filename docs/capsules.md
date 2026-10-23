@@ -17,6 +17,8 @@
 
 ## WgetCloud 流量
 
+修复 WebView2 授权误报：浏览器已登录却被独立 HttpClient 返回 403 时不能判定 Cookie 已失效。当前登录验证调用 WebView2 的 `ExecuteScriptAsync` 读取当前 `/user` 页面的可见流量文本；启用 `WgetCloudUseBrowserSession` 后后台刷新使用同一个持久化 WebView2 用户数据目录访问 `GET /user`，而不是将 Cookie 导出给另一个 HTTP 客户端。只保存浏览器会话模式及目标 URL，不在配置或日志里存储 Cookie。旧版手动 Cookie 模式仍兼容。
+
 便捷授权：设置中点击「在 PulseCapsule 中登录 WgetCloud」，会在应用专属 WebView2 浏览器里打开配置的 HTTPS `/user` 页面。用户自行完成一次登录及 2FA，点击「连接此账户」后只从该 WebView2 中提取目标用户中心域名适用的 Cookie，经只读用户中心请求验证后写入 Windows 凭据管理器。独立的浏览器用户数据目录位于 `%LOCALAPPDATA%/PulseCapsule/WgetCloudBrowser/`；下次打开授权窗口会复用此登录配置文件。不会读取 Chrome 的 Cookie 文件、浏览器历史或密码，也不会触发订阅链接。会话被网站撤销时仍须在授权窗口再次登录；不声称永久有效。使用 Microsoft 官方 WebView2 WPF SDK。
 
 
