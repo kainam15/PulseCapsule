@@ -116,7 +116,11 @@ public partial class SettingsWindow : Window
             config.WgetCloudUsePost = WgetCloudPostCheck.IsChecked == true;
             config.WgetCloudValuesAreBytes = WgetCloudBytesCheck.IsChecked == true;
             if (config.Http.Url.Length > 0)
-                WgetCloudQuotaProvider.ValidateDashboardUrl(config.Http.Url, config.WgetCloudUsePost);
+            {
+                var uri = WgetCloudQuotaProvider.ValidateDashboardUrl(config.Http.Url, config.WgetCloudUsePost);
+                if (uri.AbsolutePath.TrimEnd('/').Equals("/user", StringComparison.OrdinalIgnoreCase))
+                    config.WgetCloudUsePost = false;
+            }
             using var empty = JsonDocument.Parse("{}");
             foreach (var path in new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath })
                 if (path.Length > 0) JsonFields.Get(empty.RootElement, path);

@@ -32,14 +32,14 @@
             <StackPanel x:Name="ApiFields">
               <StackPanel x:Name="EndpointFields"><TextBlock Text="API 地址" Foreground="{StaticResource Muted}"/><TextBox x:Name="BaseUrlInput"/></StackPanel>
               <StackPanel x:Name="WgetCloudFields" Visibility="Collapsed" Margin="0,0,0,12">
-                <TextBlock Text="不会访问订阅链接或自动打开订阅开关。用户中心 JSON 接口不是公开 API，需自行在浏览器 Network 中核对只读请求地址、JSON 字段和会话 Cookie；未配置时不会联网。Cookie 只存 Windows 凭据管理器，请勿输入订阅地址或登录密码。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
-                <TextBlock Text="用户中心 JSON 请求地址（完整 HTTPS 地址）" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/><TextBox x:Name="WgetCloudEndpointInput" ToolTip="仅支持 *.wgetcloud.org 下 /user/ 的统计路径；不接受 /link/ 或订阅地址"/>
+                <TextBlock Text="推荐直接填写官网登录后地址栏中的用户中心 /user 网址，自动读取网页显示的已用/总流量和重置日期，无需填写 JSON 字段。也可使用自行确认的只读 JSON 接口。绝不访问节点订阅链接或自动开启订阅。会话 Cookie 只存 Windows 凭据管理器，不要填写登录密码。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+                <TextBlock Text="用户中心地址（推荐 https://你的站点.wgetcloud.org/user）" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/><TextBox x:Name="WgetCloudEndpointInput" ToolTip="仅支持 *.wgetcloud.org 下 /user/ 的统计路径；不接受 /link/ 或订阅地址"/>
                 <CheckBox x:Name="WgetCloudPostCheck" Content="POST 请求（只允许 /user/log_month）" Margin="0,8"/>
                 <TextBlock Text="剩余流量 JSON 字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudRemainingInput"/>
                 <TextBlock Text="已用流量 JSON 字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudUsedInput"/>
                 <TextBlock Text="总流量 JSON 字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudTotalInput"/>
                 <CheckBox x:Name="WgetCloudBytesCheck" Content="接口原始单位是字节（未选则为 GB）" Margin="0,8"/>
-                <TextBlock Text="至少填写两个真实字段路径，如 $.data.used；系统只在同一响应中推算缺少的一项。会话 Cookie 可能失效；本程序不会读取浏览器登录资料。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+                <TextBlock Text="/user HTML 页面模式不需要 JSON 字段或 POST。使用 /user/... JSON 接口时才需要至少两个真实字段路径。会话 Cookie 会过期，程序不会自动读取浏览器凭据。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
               </StackPanel>
               <StackPanel x:Name="HoneWalletFields" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock Text="使用 Hone「安全与访问」中的账户访问令牌读取钱包余额。普通 API key 无法读取钱包。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>

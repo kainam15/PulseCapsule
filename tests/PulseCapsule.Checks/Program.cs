@@ -109,6 +109,42 @@ Throws("WgetCloud rejects a non-account GET path", () => WgetCloudQuotaProvider.
 Throws("WgetCloud rejects unsafe POST", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://abc.wgetcloud.org/user/traffic", true));
 Throws("WgetCloud prevents credential-bearing redirects", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://wgetcloud.org@evil.example/user/traffic", false));
 Throws("WgetCloud rejects query parameters", () => WgetCloudQuotaProvider.ValidateDashboardUrl("https://abc.wgetcloud.org/user/traffic?key=x", false));
+Check("WgetCloud permits homepage GET without subscription", WgetCloudQuotaProvider.ValidateDashboardUrl(
+    "https://abc.wgetcloud.org/user", false).AbsolutePath == "/user");
+Throws("WgetCloud refuses POST on account homepage", () => WgetCloudQuotaProvider.ValidateDashboardUrl(
+    "https://abc.wgetcloud.org/user", true));
+var homepageConfig = wget with { Http = new() { Url = "https://abc.wgetcloud.org/user" } };
+var homepageHtml = """
+<html><head><script>var x='已使用/总流量：999/1000 G';</script></head><body>
+<small>已使用/总时长：156/360 天</small>
+<small>已使用/总流量：13.18/360 G</small>
+<div>重置日期：2026-11-17</div><p>失效日期：27-05-15 10:15</p></body></html>
+""";
+var homepage = WgetCloudQuotaProvider.ParseDashboardHtml(homepageConfig, homepageHtml);
+Check("WgetCloud user-center HTML extracts real total without script contamination",
+    homepage.Remaining == 346.82m && homepage.Used == 13.18m && homepage.Total == 360m);
+Check("WgetCloud HTML extracts reset and expiration labels",
+    homepage.Message!.Contains("2026-11-17") && homepage.Message.Contains("27-05-15"));
+Throws("WgetCloud HTML refuses missing traffic", () =>
+    WgetCloudQuotaProvider.ParseDashboardHtml(homepageConfig, "<html>请登录</html>"));
+Throws("WgetCloud HTML refuses ambiguous totals", () =>
+    WgetCloudQuotaProvider.ParseDashboardHtml(homepageConfig,
+    "<small>已使用/总流量：1/100 G</small><small>已使用/总流量：2/100 G</small>"));
+var homepageCalls = 0;
+using (var homepageProvider = new WgetCloudQuotaProvider(new FakeHandler(req =>
+{
+    homepageCalls++;
+    Check("WgetCloud homepage uses GET and never follows subscription URL",
+        req.Method == HttpMethod.Get && req.RequestUri?.AbsolutePath == "/user");
+    Check("WgetCloud homepage sends only local session cookie",
+        req.Headers.TryGetValues("Cookie", out var cookies) && cookies.Single() == "session=test-value");
+    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(homepageHtml) };
+})))
+{
+    var actual = await homepageProvider.FetchAsync(homepageConfig, "session=test-value", default);
+    Check("WgetCloud HTML mode uses server-rendered usage numbers",
+        actual.Remaining == 346.82m && actual.Total == 360m && homepageCalls == 1);
+}
 var hone = ProviderConfig.Create(ProviderType.Hone);
 var wallet = ProviderConfig.Create(ProviderType.HoneWallet);
 var walletRequests = new List<string>();

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PulseCapsule.Core;
 
@@ -26,9 +28,11 @@ public sealed class WgetCloudQuotaProvider : IQuotaProvider, IDisposable
             || uri.Fragment.Length > 0 || uri.Query.Length > 0
             || !(uri.Host.Equals("wgetcloud.org", StringComparison.OrdinalIgnoreCase)
                 || uri.Host.EndsWith(".wgetcloud.org", StringComparison.OrdinalIgnoreCase))
-            || !uri.AbsolutePath.StartsWith("/user/", StringComparison.OrdinalIgnoreCase)
+            || !(uri.AbsolutePath.TrimEnd('/').Equals("/user", StringComparison.OrdinalIgnoreCase)
+                || uri.AbsolutePath.StartsWith("/user/", StringComparison.OrdinalIgnoreCase))
             || uri.AbsolutePath.Length > 160
-            || !uri.AbsolutePath["/user/".Length..].All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '/')
+            || !(uri.AbsolutePath.TrimEnd('/').Equals("/user", StringComparison.OrdinalIgnoreCase)
+                || uri.AbsolutePath["/user/".Length..].All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '/'))
             || uri.AbsolutePath.Split('/').Any(part => new[] { "subscribe", "subscription", "reset", "logout",
                 "login", "password", "order", "pay", "buy", "delete", "update", "change", "gift", "invite" }
                 .Contains(part, StringComparer.OrdinalIgnoreCase))
@@ -62,11 +66,13 @@ public sealed class WgetCloudQuotaProvider : IQuotaProvider, IDisposable
         // Never send that value anywhere, even when the provider auto-refreshes.
         if (!IsSessionCookie(secret))
             return Setup(config, "请在设置中填写用户中心会话 Cookie；旧订阅地址不再使用，也不会自动查询订阅。");
-        if (string.IsNullOrWhiteSpace(config.Http.Url)
-            || new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath }.Count(p => !string.IsNullOrWhiteSpace(p)) < 2)
-            return Setup(config, "请先配置用户中心 JSON 地址及至少两个配额字段路径（剩余 / 已用 / 总量）。");
-
+        if (string.IsNullOrWhiteSpace(config.Http.Url))
+            return Setup(config, "请填写 WgetCloud 用户中心的网址（以 /user 结尾）；旧订阅地址不会使用。");
         var uri = ValidateDashboardUrl(config.Http.Url, config.WgetCloudUsePost);
+        var htmlDashboard = uri.AbsolutePath.TrimEnd('/').Equals("/user", StringComparison.OrdinalIgnoreCase);
+        if (!htmlDashboard && new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath }
+                .Count(p => !string.IsNullOrWhiteSpace(p)) < 2)
+            return Setup(config, "JSON 模式需要至少两个真实配额字段路径；用户中心 /user 页面模式不需要填写字段。");
         try
         {
             using var request = new HttpRequestMessage(config.WgetCloudUsePost ? HttpMethod.Post : HttpMethod.Get, uri);
@@ -95,6 +101,7 @@ public sealed class WgetCloudQuotaProvider : IQuotaProvider, IDisposable
                     throw new ProviderException("用户中心 JSON 响应超过 1 MiB，已停止读取。");
                 buffer.Write(chunk, 0, count);
             }
+            if (htmlDashboard) return ParseDashboardHtml(config, Encoding.UTF8.GetString(buffer.ToArray()));
             using var document = JsonDocument.Parse(buffer.ToArray());
             return ParseDashboardJson(config, document.RootElement);
         }
@@ -102,6 +109,41 @@ public sealed class WgetCloudQuotaProvider : IQuotaProvider, IDisposable
         catch (HttpRequestException) { throw new ProviderException("无法连接用户中心，请检查网络与 JSON 接口地址。"); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         { throw new ProviderException("用户中心请求超时，稍后重试。"); }
+    }
+
+    /// <summary>Parse only the documented visual statistics displayed by the observed GET /user HTML page.</summary>
+    public static QuotaSnapshot ParseDashboardHtml(ProviderConfig config, string html)
+    {
+        if (html.Length > 1_048_576) throw new ProviderException("用户中心 HTML 过大，已停止解析。");
+        var timeout = TimeSpan.FromMilliseconds(500);
+        // Do not interpret JavaScript/CSS or rely on browser-side execution.
+        var withoutScripts = Regex.Replace(html, @"<(script|style)\b[^>]*>.*?</\1\s*>", " ",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline, timeout);
+        var visible = WebUtility.HtmlDecode(Regex.Replace(withoutScripts, @"<[^>]+>", " ",
+            RegexOptions.Singleline, timeout));
+        visible = Regex.Replace(visible, @"\s+", " ", RegexOptions.None, timeout);
+        var quota = Regex.Matches(visible,
+            @"已使用\s*/\s*总流量\s*[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*/\s*([0-9]+(?:\.[0-9]+)?)\s*G(?:B)?\b",
+            RegexOptions.IgnoreCase, timeout);
+        if (quota.Count != 1 ||
+            !decimal.TryParse(quota[0].Groups[1].Value, NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out var used) ||
+            !decimal.TryParse(quota[0].Groups[2].Value, NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out var total) || total <= 0)
+            throw new ProviderException("用户中心未显示唯一有效的已用/总流量；请检查是否已登录、套餐是否生效或网页是否改版。");
+        var reset = Regex.Match(visible, @"重置日期\s*[:：]\s*(\d{4}-\d{2}-\d{2})", RegexOptions.None, timeout);
+        var expires = Regex.Match(visible, @"失效日期\s*[:：]\s*(\d{2,4}-\d{2}-\d{2})", RegexOptions.None, timeout);
+        var notes = new List<string>();
+        if (reset.Success) notes.Add("重置日期：" + reset.Groups[1].Value);
+        if (expires.Success) notes.Add("套餐到期：" + expires.Groups[1].Value);
+        if (used > total) notes.Add("已用流量超过套餐总量");
+        return new QuotaSnapshot
+        {
+            ProviderId = config.Id, Kind = QuotaKind.Limit, Currency = "GB",
+            Used = used, Total = total, Remaining = Math.Max(0, total - used),
+            UsageLabel = "已用流量", Scope = "WgetCloud 用户中心",
+            FetchedAt = DateTimeOffset.UtcNow, Message = string.Join("；", notes)
+        };
     }
 
     public static QuotaSnapshot ParseDashboardJson(ProviderConfig config, JsonElement root)
