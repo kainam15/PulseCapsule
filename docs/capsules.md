@@ -17,6 +17,9 @@
 
 ## WgetCloud 流量
 
+便捷授权：设置中点击「在 PulseCapsule 中登录 WgetCloud」，会在应用专属 WebView2 浏览器里打开配置的 HTTPS `/user` 页面。用户自行完成一次登录及 2FA，点击「连接此账户」后只从该 WebView2 中提取目标用户中心域名适用的 Cookie，经只读用户中心请求验证后写入 Windows 凭据管理器。独立的浏览器用户数据目录位于 `%LOCALAPPDATA%/PulseCapsule/WgetCloudBrowser/`；下次打开授权窗口会复用此登录配置文件。不会读取 Chrome 的 Cookie 文件、浏览器历史或密码，也不会触发订阅链接。会话被网站撤销时仍须在授权窗口再次登录；不声称永久有效。使用 Microsoft 官方 WebView2 WPF SDK。
+
+
 浏览器 Network 实测：用户中心首页的套餐总量来自 `GET /user` 的 HTML document，并非单独 XHR。页面包含 `已使用/总流量：13.18/360 G` 类似标签。现在原生支持只读解析这个 HTML 页面：填写当前站点的 HTTPS `/user` 地址和用户中心会话 Cookie 即可，不需要 JSON 字段。此模式读取显示的已用/总量及可选重置日、到期日；站点 HTML 改版会明确提示错误，绝不回退到订阅链接。
 
 设置 → 添加数据源 →「WgetCloud 流量」。此数据源**永不访问订阅 URL**，节点订阅仍由代理客户端负责。WgetCloud 尚未公开用户中心 JSON API 文档，因此需先在浏览器开发者工具 Network 中找到真实的只读统计 JSON 请求；程序不猜测配额路径。用户填写请求完整 HTTPS 地址、GET/POST 方式以及至少两个字段路径（剩余、已用、总额度）。支持数值为 GB 或字节，缺少的一个字段由其余两个推算并校验，任何字段错误都明确显示失败。

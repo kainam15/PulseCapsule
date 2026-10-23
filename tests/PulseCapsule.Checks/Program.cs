@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.IO;
 using System.Text.Json;
+using PulseCapsule;
 using PulseCapsule.Core;
 using PulseCapsule.Services;
 using PulseCapsule.UI;
@@ -145,6 +146,19 @@ using (var homepageProvider = new WgetCloudQuotaProvider(new FakeHandler(req =>
     Check("WgetCloud HTML mode uses server-rendered usage numbers",
         actual.Remaining == 346.82m && actual.Total == 360m && homepageCalls == 1);
 }
+var trustedWgetCloud = new Uri("https://abc.wgetcloud.org/user");
+Check("isolated WgetCloud login permits user center", WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
+    "https://abc.wgetcloud.org/user"));
+Check("isolated WgetCloud login permits same-host login", WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
+    "https://abc.wgetcloud.org/login"));
+Check("isolated WgetCloud login blocks subscription routes", !WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
+    "https://abc.wgetcloud.org/user/subscribe"));
+Check("isolated WgetCloud login blocks off-domain redirect", !WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
+    "https://other.wgetcloud.org/user"));
+Check("isolated WgetCloud login blocks authentication exfiltration", !WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
+    "https://abc.wgetcloud.org@evil.example/login"));
+Check("isolated WgetCloud login blocks reset paths", !WgetCloudLoginWindow.IsAllowedNavigation(trustedWgetCloud,
+    "https://abc.wgetcloud.org/user/reset"));
 var hone = ProviderConfig.Create(ProviderType.Hone);
 var wallet = ProviderConfig.Create(ProviderType.HoneWallet);
 var walletRequests = new List<string>();

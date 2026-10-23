@@ -67,7 +67,7 @@ public partial class SettingsWindow : Window
         WgetCloudPostCheck.IsChecked = p.WgetCloudUsePost;
         WgetCloudBytesCheck.IsChecked = p.WgetCloudValuesAreBytes;
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
-        KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "用户中心会话 Cookie", _ => "API key" };
+        KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "用户中心会话 Cookie（可不填）", _ => "API key" };
         HoneWalletFields.Visibility = p.Type == ProviderType.HoneWallet ? Visibility.Visible : Visibility.Collapsed;
         WgetCloudFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Visible : Visibility.Collapsed;
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
@@ -83,9 +83,9 @@ public partial class SettingsWindow : Window
         try { KeyHint.Text = app.Credentials.Read(p.Id) is null ? p.Type switch
             {
                 ProviderType.HoneWallet => "尚未连接钱包；填写账户访问令牌或使用环境变量。",
-                ProviderType.WgetCloud => "需在官网登录后，从开发者工具中确认只读 JSON 接口和会话 Cookie；不要填订阅地址或密码。",
+                ProviderType.WgetCloud => "可以直接点击「在 PulseCapsule 中登录」，自动保存会话，无需手动复制 Cookie。",
                 _ => "尚未保存密钥；可填写 key 或使用环境变量。"
-            } : p.Type == ProviderType.WgetCloud ? "已保存凭据；旧版保存的订阅链接不会被发送，请输入用户中心 Cookie 替换。" : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
+            } : p.Type == ProviderType.WgetCloud ? "已有本地凭据。如果尚未授权，请点击一键登录按钮；旧订阅 URL 不会被发送。" : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
         catch { KeyHint.Text = "Windows 凭据管理器暂不可用。"; }
         EditorScroll.ScrollToTop();
     }
@@ -205,6 +205,52 @@ public partial class SettingsWindow : Window
         try { App.OpenWebsite(HttpQuotaProvider.Endpoint(ReadForm().BaseUrl, "/security")); }
         catch (Exception error) { ShowError(error); }
     }
+    private async void WgetCloudLogin_Click(object sender, RoutedEventArgs e)
+    {
+        WgetCloudLoginButton.IsEnabled = false;
+        try
+        {
+            var config = ReadForm();
+            if (config.Type != ProviderType.WgetCloud)
+                throw new ProviderException("请先选择 WgetCloud 数据源。");
+            var uri = WgetCloudQuotaProvider.ValidateDashboardUrl(config.Http.Url, false);
+            if (uri.AbsolutePath.TrimEnd('/') != "/user" || config.WgetCloudUsePost)
+                throw new ProviderException("一键登录仅支持用户中心 /user HTML 模式，请取消 POST。");
+            config.SecretEnvironment = "";
+            if (app.Monitor.Demo) throw new ProviderException("演示模式不连接真实账户。");
+
+            var login = new WgetCloudLoginWindow(config) { Owner = this };
+            if (login.ShowDialog() != true || login.ApprovedCookie is not { Length: > 0 } cookie)
+            {
+                StatusText.Text = "尚未授权；原有账户设置保持不变。";
+                return;
+            }
+
+            var old = selected!;
+            var changed = config.Http.Url != old.Http.Url || config.BaseUrl != old.BaseUrl;
+            if (changed) config.Id = Guid.NewGuid().ToString("N");
+            var index = working.Providers.IndexOf(old);
+            app.Credentials.Write(config.Id, cookie);
+            working.Providers[index] = config;
+            try { Commit(config.Id); }
+            catch
+            {
+                working.Providers[index] = old;
+                if (changed) app.Credentials.Delete(config.Id);
+                throw;
+            }
+            if (changed) app.Credentials.Delete(old.Id);
+            drafts.Remove(old.Id);
+            KeyInput.Clear();
+            ReloadList(config.Id);
+            StatusText.Text = "WgetCloud 已连接，Cookie 已自动保存在 Windows 凭据管理器，之后正常自动刷新。";
+            await app.Monitor.RefreshAsync(true);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { ShowError(error); }
+        finally { WgetCloudLoginButton.IsEnabled = true; }
+    }
+
     private async void Test_Click(object sender, RoutedEventArgs e)
     {
         TestButton.IsEnabled = false;
