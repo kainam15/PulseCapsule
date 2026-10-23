@@ -30,7 +30,7 @@ public sealed class CardViewModel
     public Visibility ResetsVisibility => ResetCredits.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     public PointCollection Trend { get; } = [];
     public Visibility TrendVisibility => Trend.Count < 3 ? Visibility.Collapsed : Visibility.Visible;
-    public string TrendLabel => "7 日余额趋势 · 本机记录";
+    public string TrendLabel => Config.Type == ProviderType.WgetCloud ? "7 日剩余流量趋势 · 本机记录" : "7 日余额趋势 · 本机记录";
     public bool NeedsSetup => Snapshot?.Status == SnapshotStatus.Setup;
     public Visibility SetupVisibility => NeedsSetup ? Visibility.Visible : Visibility.Collapsed;
 
@@ -42,13 +42,15 @@ public sealed class CardViewModel
         var low = snapshot is not null && QuotaRules.IsLow(config, snapshot);
         StatusBrush = Brush(status switch { SnapshotStatus.Stale => "#F1C985", SnapshotStatus.Error => "#FF9B9B", SnapshotStatus.Setup => "#94A8B9", _ => low ? "#FFB185" : "#A6EDCF" });
         StatusText = status switch { SnapshotStatus.Stale => "已过期", SnapshotStatus.Error => "连接失败", SnapshotStatus.Setup => "待连接", SnapshotStatus.Ok => low ? "额度偏低" : "已同步", _ => "等待同步" };
-        Scope = snapshot?.Scope ?? (config.Type == ProviderType.Codex ? "本机 Codex 账户" : "API 余额");
+        Scope = snapshot?.Scope ?? (config.Type == ProviderType.Codex ? "本机 Codex 账户" : config.Type == ProviderType.WgetCloud ? "套餐流量" : "API 余额");
         if (snapshot?.Plan is { Length: > 0 } plan) Scope = plan.ToUpperInvariant() + " · " + Scope;
         var minimum = snapshot?.Windows.OrderBy(w => w.RemainingPercent).FirstOrDefault();
         PrimaryValue = minimum is not null ? $"{minimum.RemainingPercent:0.#}%" : Money(snapshot?.Remaining ?? snapshot?.Used, snapshot?.Currency ?? config.Currency);
-        var balanceLabel = config.Type == ProviderType.HoneWallet ? "钱包余额" : "可用余额";
+        var balanceLabel = config.Type == ProviderType.WgetCloud ? "剩余流量" : config.Type == ProviderType.HoneWallet ? "钱包余额" : "可用余额";
         PrimaryLabel = minimum is not null ? minimum.Name + "剩余" : snapshot?.Remaining.HasValue == true ? snapshot.IsEstimate ? "预算剩余 · 估算" : balanceLabel : snapshot?.Used.HasValue == true ? snapshot.UsageLabel : balanceLabel;
-        SecondaryText = snapshot?.UsedMonth is not null ? "本月已用  " + Money(snapshot.UsedMonth, snapshot.Currency)
+        SecondaryText = config.Type == ProviderType.WgetCloud && snapshot?.Used is not null && snapshot.Total is not null
+            ? "已用  " + Money(snapshot.Used, "GB") + " / " + Money(snapshot.Total, "GB")
+            : snapshot?.UsedMonth is not null ? "本月已用  " + Money(snapshot.UsedMonth, snapshot.Currency)
             : snapshot?.Used is not null && snapshot.Remaining is not null ? snapshot.UsageLabel + "  " + Money(snapshot.Used, snapshot.Currency)
             : snapshot?.Total is not null ? "总额度  " + Money(snapshot.Total, snapshot.Currency) : "";
         Updated = snapshot?.FetchedAt is { } time ? "更新于 " + time.ToLocalTime().ToString("HH:mm") : "尚未读取数据";
@@ -67,7 +69,8 @@ public sealed class CardViewModel
     }
 
     public static string Money(decimal? value, string? currency)
-        => value is null ? "—" : (currency == "CNY" ? "¥" : currency == "USD" ? "$" : "") + value.Value.ToString("N2", CultureInfo.InvariantCulture);
+        => value is null ? "—" : (currency == "CNY" ? "¥" : currency == "USD" ? "$" : "")
+            + value.Value.ToString("N2", CultureInfo.InvariantCulture) + (currency == "GB" ? " GB" : "");
     private static Brush Brush(string color) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color)); brush.Freeze(); return brush; }
 }
 

@@ -56,7 +56,7 @@ public sealed class ProviderCardViewModel
     {
         var family = config.Type == ProviderType.HoneWallet ? ProviderType.Hone : config.Type;
         if (family == ProviderType.Codex) return (family, "local");
-        if (family == ProviderType.Manual) return (family, config.Id);
+        if (family is ProviderType.Manual or ProviderType.WgetCloud) return (family, config.Id);
         // Match the actual fetcher's /v1 normalization; keep tenant paths and ports distinct.
         var address = family == ProviderType.Custom ? config.Http.Url : HttpQuotaProvider.Endpoint(config.BaseUrl, "");
         if (!Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != "https"
@@ -78,6 +78,7 @@ public sealed class ProviderCardViewModel
         ProviderType.HoneWallet => "钱包",
         ProviderType.Hone or ProviderType.OpenRouter => "API key",
         ProviderType.Codex => "订阅",
+        ProviderType.WgetCloud => "流量订阅",
         _ => "账户"
     };
 

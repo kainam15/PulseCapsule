@@ -2,7 +2,7 @@ namespace PulseCapsule.Core;
 
 public enum QuotaKind { Balance, Limit, Spend, RateWindow }
 public enum SnapshotStatus { Ok, Stale, Error, Setup }
-public enum ProviderType { Hone, Codex, DeepSeek, Kimi, SiliconFlow, OpenRouter, Relay, Custom, Manual, HoneWallet }
+public enum ProviderType { Hone, Codex, DeepSeek, Kimi, SiliconFlow, OpenRouter, Relay, Custom, Manual, HoneWallet, WgetCloud }
 
 public sealed record RateWindow(string Name, decimal UsedPercent, int? WindowMinutes, DateTimeOffset? ResetsAt)
 {
@@ -22,6 +22,7 @@ public sealed record QuotaSnapshot
     public string UsageLabel { get; init; } = "累计消费";
     public string Scope { get; init; } = "账户";
     public DateTimeOffset? FetchedAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
     public DateTimeOffset AttemptedAt { get; init; } = DateTimeOffset.UtcNow;
     public SnapshotStatus Status { get; init; } = SnapshotStatus.Ok;
     public string? Message { get; init; }
@@ -74,6 +75,7 @@ public sealed record ProviderConfig
         ProviderType.Kimi => new() { Type = type, Name = "Kimi", BaseUrl = "https://api.moonshot.cn", Currency = "CNY", LowThreshold = 10, SecretEnvironment = "MOONSHOT_API_KEY" },
         ProviderType.SiliconFlow => new() { Type = type, Name = "硅基流动", BaseUrl = "https://api.siliconflow.cn", Currency = "CNY", LowThreshold = 10, SecretEnvironment = "SILICONFLOW_API_KEY" },
         ProviderType.OpenRouter => new() { Type = type, Name = "OpenRouter", BaseUrl = "https://openrouter.ai", SecretEnvironment = "OPENROUTER_API_KEY" },
+        ProviderType.WgetCloud => new() { Type = type, Name = "WgetCloud", BaseUrl = "https://wgetcloud.online", Currency = "GB", LowThreshold = 15, RefreshMinutes = 1440, SecretEnvironment = "WGETCLOUD_SUBSCRIPTION_URL" },
         ProviderType.Relay => new() { Type = type, Name = "API 中转站", BaseUrl = "", SecretEnvironment = "" },
         ProviderType.Custom => new() { Type = type, Name = "自定义 API", BaseUrl = "", SecretEnvironment = "" },
         _ => new() { Type = ProviderType.Manual, Name = "手动账户", BaseUrl = "", SecretEnvironment = "", RefreshMinutes = 60 }

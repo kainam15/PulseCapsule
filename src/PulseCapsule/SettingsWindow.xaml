@@ -30,7 +30,10 @@
             <Grid Margin="0,0,0,14"><TextBlock x:Name="TypeTitle" FontSize="17" FontWeight="SemiBold"/><CheckBox x:Name="EnabledCheck" Content="启用" HorizontalAlignment="Right"/></Grid>
             <TextBlock Text="显示名称" Foreground="{StaticResource Muted}"/><TextBox x:Name="NameInput" MaxLength="32"/>
             <StackPanel x:Name="ApiFields">
-              <TextBlock Text="API 地址" Foreground="{StaticResource Muted}"/><TextBox x:Name="BaseUrlInput"/>
+              <StackPanel x:Name="EndpointFields"><TextBlock Text="API 地址" Foreground="{StaticResource Muted}"/><TextBox x:Name="BaseUrlInput"/></StackPanel>
+              <StackPanel x:Name="WgetCloudFields" Visibility="Collapsed" Margin="0,0,0,12">
+                <TextBlock Text="只读取 Clash 订阅响应头中的流量统计，不保存节点，也不自动打开订阅。请先在 WgetCloud 官网手动开启订阅开关（5 分钟），复制私人订阅地址并在下方输入。到期或关闭时将显示上次记录；默认每 24 小时尝试一次。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
+              </StackPanel>
               <StackPanel x:Name="HoneWalletFields" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock Text="使用 Hone「安全与访问」中的账户访问令牌读取钱包余额。普通 API key 无法读取钱包。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <Button x:Name="WalletWebsiteButton" Content="打开 Hone 安全与访问" Click="WalletWebsite_Click" Margin="0,8,0,0" HorizontalAlignment="Left"/>

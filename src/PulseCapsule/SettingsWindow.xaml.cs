@@ -17,7 +17,8 @@ public partial class SettingsWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private static readonly (ProviderType Type, string Name)[] Types = [(ProviderType.Hone, "Hone API"), (ProviderType.HoneWallet, "Hone 钱包"), (ProviderType.Codex, "Codex"),
         (ProviderType.DeepSeek, "DeepSeek"), (ProviderType.Kimi, "Kimi"), (ProviderType.SiliconFlow, "硅基流动"),
-        (ProviderType.OpenRouter, "OpenRouter"), (ProviderType.Relay, "New API 中转站"), (ProviderType.Custom, "自定义 HTTP"), (ProviderType.Manual, "手动录入")];
+        (ProviderType.OpenRouter, "OpenRouter"), (ProviderType.WgetCloud, "WgetCloud 流量"),
+        (ProviderType.Relay, "New API 中转站"), (ProviderType.Custom, "自定义 HTTP"), (ProviderType.Manual, "手动录入")];
     public SettingsWindow(App app)
     {
         InitializeComponent();
@@ -48,7 +49,7 @@ public partial class SettingsWindow : Window
         BaseUrlInput.Text = p.Type == ProviderType.Custom ? p.Http.Url : p.BaseUrl;
         EnvironmentInput.Text = p.SecretEnvironment; CodexPathInput.Text = p.CodexExecutable;
         IntervalInput.Text = p.RefreshMinutes.ToString(); ThresholdInput.Text = p.LowThreshold.ToString(CultureInfo.InvariantCulture);
-        ThresholdLabel.Text = p.Type == ProviderType.Codex ? "剩余百分比提醒 / %" : "剩余金额提醒";
+        ThresholdLabel.Text = p.Type switch { ProviderType.Codex => "剩余百分比提醒 / %", ProviderType.WgetCloud => "剩余流量提醒 / GB", _ => "剩余金额提醒" };
         CurrencyInput.SelectedIndex = p.Currency == "CNY" ? 1 : 0;
         CurrencyInput.IsEnabled = p.Type is not (ProviderType.Hone or ProviderType.HoneWallet or ProviderType.Kimi or ProviderType.OpenRouter);
         UsageMultiplierInput.Text = p.UsageMultiplier.ToString(CultureInfo.InvariantCulture);
@@ -60,19 +61,24 @@ public partial class SettingsWindow : Window
         MultiplierInput.Text = p.Http.Multiplier.ToString(CultureInfo.InvariantCulture);
         HeadersInput.Text = JsonSerializer.Serialize(p.Http.Headers, SettingsStore.Json);
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
-        KeyLabel.Text = p.Type == ProviderType.HoneWallet ? "账户访问令牌" : "API key";
+        KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "私人订阅地址", _ => "API key" };
         HoneWalletFields.Visibility = p.Type == ProviderType.HoneWallet ? Visibility.Visible : Visibility.Collapsed;
+        WgetCloudFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Visible : Visibility.Collapsed;
+        EndpointFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
         ConnectWalletFields.Visibility = p.Type == ProviderType.Hone ? Visibility.Visible : Visibility.Collapsed;
         DeleteKeyButton.Visibility = ApiFields.Visibility;
         CodexFields.Visibility = p.Type == ProviderType.Codex ? Visibility.Visible : Visibility.Collapsed;
-        CurrencyFields.Visibility = p.Type == ProviderType.Codex ? Visibility.Collapsed : Visibility.Visible;
+        CurrencyFields.Visibility = p.Type is ProviderType.Codex or ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
         RelayFields.Visibility = p.Type is ProviderType.Hone or ProviderType.Relay ? Visibility.Visible : Visibility.Collapsed;
         ManualFields.Visibility = p.Type == ProviderType.Manual ? Visibility.Visible : Visibility.Collapsed;
         CustomFields.Visibility = p.Type == ProviderType.Custom ? Visibility.Visible : Visibility.Collapsed;
         BudgetFields.Visibility = p.Type is ProviderType.Manual or ProviderType.Custom ? Visibility.Visible : Visibility.Collapsed;
-        try { KeyHint.Text = app.Credentials.Read(p.Id) is null ? p.Type == ProviderType.HoneWallet
-            ? "尚未连接钱包；填写账户访问令牌或使用环境变量。" : "尚未保存密钥；可填写 key 或使用环境变量。"
-            : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
+        try { KeyHint.Text = app.Credentials.Read(p.Id) is null ? p.Type switch
+            {
+                ProviderType.HoneWallet => "尚未连接钱包；填写账户访问令牌或使用环境变量。",
+                ProviderType.WgetCloud => "尚未保存订阅地址；打开官网订阅开关后复制链接，粘贴到此处。",
+                _ => "尚未保存密钥；可填写 key 或使用环境变量。"
+            } : p.Type == ProviderType.WgetCloud ? "订阅地址已安全保存；留空保留原地址。" : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
         catch { KeyHint.Text = "Windows 凭据管理器暂不可用。"; }
         EditorScroll.ScrollToTop();
     }
@@ -85,13 +91,18 @@ public partial class SettingsWindow : Window
         config.Enabled = EnabledCheck.IsChecked == true;
         if (!int.TryParse(IntervalInput.Text, out var interval) || interval < 1 || interval > 1440) throw new ProviderException("刷新间隔须在 1–1440 分钟之间。");
         config.RefreshMinutes = interval;
+        if (config.Type == ProviderType.WgetCloud && interval < 60)
+            throw new ProviderException("WgetCloud 至少间隔 60 分钟查询一次，避免频繁触发订阅限制。");
         config.LowThreshold = Number(ThresholdInput.Text, "阈值", false)!.Value;
         if (config.LowThreshold < 0 || config.Type == ProviderType.Codex && config.LowThreshold > 100) throw new ProviderException("阈值无效；Codex 应为 0–100%。");
         config.Currency = CurrencyInput.SelectedIndex == 1 ? "CNY" : "USD";
         config.SecretEnvironment = EnvironmentInput.Text.Trim();
         config.CodexExecutable = CodexPathInput.Text.Trim();
         if (config.Type == ProviderType.Codex) config.Currency = "";
-        if (config.NeedsSecret)
+        if (config.Type == ProviderType.WgetCloud) config.Currency = "GB";
+        if (config.Type == ProviderType.WgetCloud && KeyInput.Password.Length > 0)
+            WgetCloudQuotaProvider.ValidateSubscriptionUrl(KeyInput.Password.Trim());
+        if (config.NeedsSecret && config.Type != ProviderType.WgetCloud)
         {
             var url = BaseUrlInput.Text.Trim();
             HttpQuotaProvider.ValidateUrl(url);
@@ -180,7 +191,8 @@ public partial class SettingsWindow : Window
             if (app.Monitor.Demo) { StatusText.Text = "演示模式不访问网络；请在正式实例中测试。"; return; }
             StatusText.Text = "正在读取额度…";
             using var http = new HttpQuotaProvider();
-            IQuotaProvider provider = config.Type == ProviderType.Codex ? new CodexQuotaProvider() : http;
+            using var wgetCloud = new WgetCloudQuotaProvider();
+            IQuotaProvider provider = config.Type switch { ProviderType.Codex => new CodexQuotaProvider(), ProviderType.WgetCloud => wgetCloud, _ => http };
             var snapshot = await provider.FetchAsync(config, key, lifetime.Token);
             var card = new CardViewModel(config, snapshot, []);
             StatusText.Text = snapshot.Status == SnapshotStatus.Setup ? snapshot.Message : "连接成功 · " + card.PrimaryLabel + " " + card.PrimaryValue + "。点击保存后开始自动刷新。";
