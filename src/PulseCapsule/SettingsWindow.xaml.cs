@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
 using PulseCapsule.Services;
 using PulseCapsule.UI;
@@ -13,6 +14,9 @@ public partial class SettingsWindow : Window
     private readonly App app;
     private AppSettings working;
     private ProviderConfig? selected;
+    private bool loadingProvider;
+    private bool changingProvider;
+    private bool formDirty;
     private readonly HashSet<string> drafts = [];
     private readonly CancellationTokenSource lifetime = new();
     private static readonly (ProviderType Type, string Name)[] Types = [(ProviderType.Hone, "Hone API"), (ProviderType.HoneWallet, "Hone 钱包"), (ProviderType.Codex, "Codex"),
@@ -30,20 +34,52 @@ public partial class SettingsWindow : Window
         TaskbarDockCheck.IsChecked = working.TaskbarDocked;
         StartupCheck.IsChecked = working.StartWithWindows;
         ReloadList(working.Providers.FirstOrDefault()?.Id);
+        Editor.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => MarkFormDirty()), true);
+        Editor.AddHandler(PasswordBox.PasswordChangedEvent, new RoutedEventHandler((_, _) => MarkFormDirty()), true);
+        Editor.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => MarkFormDirty()), true);
+        Editor.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => MarkFormDirty()), true);
+        Editor.AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler((_, _) => MarkFormDirty()), true);
+        EnabledCheck.Checked += (_, _) => MarkFormDirty();
+        EnabledCheck.Unchecked += (_, _) => MarkFormDirty();
+        Closing += (_, e) => { if (!ResolvePendingChanges()) e.Cancel = true; };
         Closed += (_, _) => lifetime.Cancel();
     }
     private static AppSettings Clone(AppSettings settings) => JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings, SettingsStore.Json), SettingsStore.Json)!;
     private void ReloadList(string? id)
     {
-        ProviderList.ItemsSource = null; ProviderList.ItemsSource = working.Providers;
-        ProviderList.SelectedItem = working.Providers.FirstOrDefault(p => p.Id == id) ?? working.Providers.FirstOrDefault();
-        Editor.IsEnabled = ProviderList.SelectedItem is not null;
-        Actions.IsEnabled = Editor.IsEnabled;
+        changingProvider = true;
+        try
+        {
+            ProviderList.ItemsSource = null; ProviderList.ItemsSource = working.Providers;
+            var provider = working.Providers.FirstOrDefault(p => p.Id == id) ?? working.Providers.FirstOrDefault();
+            ProviderList.SelectedItem = provider;
+            Editor.IsEnabled = provider is not null;
+            Actions.IsEnabled = Editor.IsEnabled;
+            LoadProvider(provider);
+        }
+        finally { changingProvider = false; }
     }
     private void Provider_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (ProviderList.SelectedItem is not ProviderConfig p) return;
-        selected = p; KeyInput.Clear();
+        if (changingProvider || ProviderList.SelectedItem is not ProviderConfig next || ReferenceEquals(selected, next)) return;
+        if (!ResolvePendingChanges())
+        {
+            changingProvider = true;
+            try { ProviderList.SelectedItem = selected; }
+            finally { changingProvider = false; }
+            return;
+        }
+        ReloadList(next.Id);
+    }
+    private void LoadProvider(ProviderConfig? p)
+    {
+        selected = p;
+        ConnectionFeedback.Text = "";
+        if (p is null) { ClearFormDirty(); return; }
+        loadingProvider = true;
+        try
+        {
+        KeyInput.Clear();
         TypeTitle.Text = Types.First(t => t.Type == p.Type).Name;
         NameInput.Text = p.Name; EnabledCheck.IsChecked = p.Enabled;
         BaseUrlInput.Text = p.Type == ProviderType.Custom ? p.Http.Url : p.BaseUrl;
@@ -76,7 +112,7 @@ public partial class SettingsWindow : Window
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
         EndpointFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
         ConnectWalletFields.Visibility = p.Type == ProviderType.Hone ? Visibility.Visible : Visibility.Collapsed;
-        DeleteKeyButton.Visibility = ApiFields.Visibility;
+        DeleteKeyButton.Visibility = p.NeedsSecret && !browserLinked ? Visibility.Visible : Visibility.Collapsed;
         CodexFields.Visibility = p.Type == ProviderType.Codex ? Visibility.Visible : Visibility.Collapsed;
         CurrencyFields.Visibility = p.Type is ProviderType.Codex or ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
         RelayFields.Visibility = p.Type is ProviderType.Hone or ProviderType.Relay ? Visibility.Visible : Visibility.Collapsed;
@@ -86,11 +122,35 @@ public partial class SettingsWindow : Window
         try { KeyHint.Text = app.Credentials.Read(p.Id) is null ? p.Type switch
             {
                 ProviderType.HoneWallet => "尚未连接钱包；填写账户访问令牌或使用环境变量。",
-                ProviderType.WgetCloud => "可以直接点击「在 PulseCapsule 中登录」，自动保存会话，无需手动复制 Cookie。",
+                ProviderType.WgetCloud => "可以点击「登录并连接 WgetCloud」，复用内置浏览器会话，无需手动复制 Cookie。",
                 _ => "尚未保存密钥；可填写 key 或使用环境变量。"
             } : p.Type == ProviderType.WgetCloud ? "已有本地凭据。如果尚未授权，请点击一键登录按钮；旧订阅 URL 不会被发送。" : "密钥已保存在 Windows 凭据管理器；留空保留。"; }
         catch { KeyHint.Text = "Windows 凭据管理器暂不可用。"; }
         EditorScroll.ScrollToTop();
+        }
+        finally { loadingProvider = false; ClearFormDirty(); }
+    }
+    private void MarkFormDirty()
+    {
+        if (loadingProvider || selected is null || formDirty) return;
+        formDirty = true;
+        UnsavedMarker.Visibility = Visibility.Visible;
+        ConnectionFeedback.Text = "表单内容已修改，先前的连接测试结果可能已失效。";
+    }
+    private void ClearFormDirty()
+    {
+        formDirty = false;
+        UnsavedMarker.Visibility = Visibility.Collapsed;
+    }
+    private bool ResolvePendingChanges()
+    {
+        if (!formDirty) return true;
+        var answer = MessageBox.Show(this, "当前数据源有未保存的修改。\n\n是：保存并继续\n否：放弃修改并继续\n取消：留在当前页面", "未保存的修改", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.Cancel) return false;
+        if (answer == MessageBoxResult.Yes) return SaveCurrent();
+        if (selected is not null && drafts.Remove(selected.Id)) working.Providers.Remove(selected);
+        ClearFormDirty();
+        return true;
     }
     private ProviderConfig ReadForm()
     {
@@ -185,9 +245,10 @@ public partial class SettingsWindow : Window
     }
     private void Add_Click(object sender, RoutedEventArgs e)
     {
+        if (!ResolvePendingChanges()) return;
         var config = ProviderConfig.Create(Types[Math.Max(0, AddType.SelectedIndex)].Type);
         drafts.Add(config.Id);
-        working.Providers.Add(config); ReloadList(config.Id); StatusText.Text = "填写信息后点击保存账户。";
+        working.Providers.Add(config); ReloadList(config.Id); MarkFormDirty(); StatusText.Text = "填写信息后点击保存账户。";
     }
     private void ConnectWallet_Click(object sender, RoutedEventArgs e)
     {
@@ -196,9 +257,10 @@ public partial class SettingsWindow : Window
             var baseUrl = BaseUrlInput.Text.Trim();
             HttpQuotaProvider.ValidateUrl(baseUrl);
             var existing = working.Providers.FirstOrDefault(p => p.Type == ProviderType.HoneWallet && p.BaseUrl == baseUrl);
+            if (!ResolvePendingChanges()) return;
             if (existing is not null) { ReloadList(existing.Id); return; }
             var wallet = ProviderConfig.Create(ProviderType.HoneWallet) with { BaseUrl = baseUrl };
-            drafts.Add(wallet.Id); working.Providers.Insert(0, wallet); ReloadList(wallet.Id);
+            drafts.Add(wallet.Id); working.Providers.Insert(0, wallet); ReloadList(wallet.Id); MarkFormDirty();
             StatusText.Text = "填写 Hone 账户访问令牌后测试并保存。现有 API key 单独保留。";
         }
         catch (Exception error) { ShowError(error); }
@@ -246,6 +308,7 @@ public partial class SettingsWindow : Window
             KeyInput.Clear();
             ReloadList(config.Id);
             StatusText.Text = "连接成功 · 剩余流量 " + CardViewModel.Money(verified.Remaining, "GB") + "。以后使用内置浏览器会话自动刷新。";
+            ConnectionFeedback.Text = "WgetCloud 已在内置浏览器完成连接并保存。";
             await app.Monitor.RefreshAsync(true);
         }
         catch (OperationCanceledException) { }
@@ -256,6 +319,7 @@ public partial class SettingsWindow : Window
     private async void Test_Click(object sender, RoutedEventArgs e)
     {
         TestButton.IsEnabled = false;
+        ConnectionFeedback.Text = "正在测试当前表单的连接…";
         try
         {
             var config = ReadForm();
@@ -276,12 +340,14 @@ public partial class SettingsWindow : Window
             var snapshot = await provider.FetchAsync(config, key, lifetime.Token);
             var card = new CardViewModel(config, snapshot, []);
             StatusText.Text = snapshot.Status == SnapshotStatus.Setup ? snapshot.Message : "连接成功 · " + card.PrimaryLabel + " " + card.PrimaryValue + "。点击保存后开始自动刷新。";
+            ConnectionFeedback.Text = snapshot.Status == SnapshotStatus.Setup ? (snapshot.Message ?? "尚未完成配置。") : "连接测试成功 · 当前表单仍需点击「保存账户」。";
         }
-        catch (OperationCanceledException) { }
-        catch (Exception error) { ShowError(error); }
+        catch (OperationCanceledException) { ConnectionFeedback.Text = "连接测试已取消。"; }
+        catch (Exception error) { ShowError(error); ConnectionFeedback.Text = StatusText.Text; }
         finally { TestButton.IsEnabled = true; }
     }
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private void Save_Click(object sender, RoutedEventArgs e) => SaveCurrent();
+    private bool SaveCurrent()
     {
         try
         {
@@ -302,8 +368,10 @@ public partial class SettingsWindow : Window
             if (identityChanged) app.Credentials.Delete(old.Id);
             drafts.Remove(old.Id);
             KeyInput.Clear(); ReloadList(config.Id); StatusText.Text = "账户已保存，正在同步。";
+            ConnectionFeedback.Text = "配置已保存 · 这不代表当前连接已经通过测试。";
+            return true;
         }
-        catch (Exception error) { ShowError(error); }
+        catch (Exception error) { ShowError(error); return false; }
     }
     private void Commit(string? savingId = null, bool saveDocking = false)
     {
@@ -346,16 +414,45 @@ public partial class SettingsWindow : Window
     private void DeleteKey_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
-        try { app.Credentials.Delete(selected.Id); KeyInput.Clear(); Commit(); KeyHint.Text = "已清除保存的 key；环境变量仍可提供密钥。"; }
+        var answer = MessageBox.Show(this,
+            $"确定清除「{selected.Name}」保存在 Windows 凭据管理器中的密钥？\n\n不会删除环境变量引用；如果环境变量仍有值，账户可能继续认证。此操作不能撤销。",
+            "清除保存的密钥", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+        try
+        {
+            app.Credentials.Delete(selected.Id);
+            KeyInput.Clear();
+            KeyHint.Text = "本机保存的密钥已清除；配置的环境变量仍可能提供密钥。";
+            StatusText.Text = "已清除保存的密钥；未更改环境变量配置。";
+        }
         catch (Exception error) { ShowError(error); }
     }
     private void Remove_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
+        var old = selected;
+        var answer = MessageBox.Show(this,
+            $"确定移除数据源「{old.Name}」？\n\n此操作会移除账户配置及保存的凭据，未保存的表单修改也将丢失。历史记录将保留至正常过期。此操作不能撤销。",
+            "移除数据源", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
         try
         {
-            var old = selected; working.Providers.Remove(old); Commit(); app.Credentials.Delete(old.Id); ReloadList(null);
-            StatusText.Text = "数据源已移除，历史记录保留至正常过期。";
+            var index = working.Providers.IndexOf(old);
+            if (index < 0) return;
+            working.Providers.RemoveAt(index);
+            try { Commit(); }
+            catch { working.Providers.Insert(index, old); throw; }
+            drafts.Remove(old.Id);
+            ReloadList(null);
+            try
+            {
+                app.Credentials.Delete(old.Id);
+                StatusText.Text = "数据源已移除，历史记录保留至正常过期。";
+            }
+            catch (Exception)
+            {
+                StatusText.Text = "数据源已移除，但清理本机凭据失败；请检查 Windows 凭据管理器。";
+            }
         }
         catch (Exception error) { ShowError(error); }
     }

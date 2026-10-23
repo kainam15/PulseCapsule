@@ -8,7 +8,7 @@
         <StackPanel>
           <TextBlock Text="数据源" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,0,0,10"/>
           <ListBox x:Name="ProviderList" DisplayMemberPath="Name" SelectionChanged="Provider_Changed" Background="{StaticResource Panel}" Foreground="{StaticResource Text}" BorderThickness="0" MinHeight="105" MaxHeight="220" Padding="4">
-            <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="10,11"/><Setter Property="Margin" Value="0,2"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Selection" Padding="{TemplateBinding Padding}" CornerRadius="7" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="Selection" Property="Background" Value="#354959"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Selection" Property="Opacity" Value="0.75"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+            <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocusVisual}"/><Setter Property="Padding" Value="10,11"/><Setter Property="Margin" Value="0,2"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Selection" Padding="{TemplateBinding Padding}" CornerRadius="7" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="Selection" Property="Background" Value="#354959"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Selection" Property="Opacity" Value="0.75"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
           </ListBox>
           <ComboBox x:Name="AddType" Margin="0,14,0,7" AutomationProperties.Name="添加数据源类型"/>
           <Button x:Name="AddButton" Content="＋ 添加数据源" Click="Add_Click"/>
@@ -24,25 +24,28 @@
         <TextBlock Grid.Row="1" Text="密钥由 Windows 凭据管理器保护。配置与历史仅保存在本机。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,12,0,4"/>
       </Grid>
       <Border Grid.Column="2" Background="{StaticResource Panel}" CornerRadius="14" Padding="20">
-        <Grid><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <ScrollViewer x:Name="EditorScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock x:Name="TypeTitle" FontSize="17" FontWeight="SemiBold"/><TextBlock x:Name="UnsavedMarker" Text=" · 未保存" Foreground="{StaticResource Mint}" Visibility="Collapsed" VerticalAlignment="Center" FontSize="12" Margin="8,0,0,0"/></StackPanel>
+          <CheckBox x:Name="EnabledCheck" Grid.Column="1" Content="启用" Margin="16,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="启用此数据源"/>
+        </Grid>
+        <ScrollViewer x:Name="EditorScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0">
           <StackPanel x:Name="Editor">
-            <Grid Margin="0,0,0,14"><TextBlock x:Name="TypeTitle" FontSize="17" FontWeight="SemiBold"/><CheckBox x:Name="EnabledCheck" Content="启用" HorizontalAlignment="Right"/></Grid>
-            <TextBlock Text="显示名称" Foreground="{StaticResource Muted}"/><TextBox x:Name="NameInput" MaxLength="32"/>
+            <TextBlock Text="显示名称" Foreground="{StaticResource Muted}"/><TextBox x:Name="NameInput" MaxLength="32" AutomationProperties.Name="数据源显示名称"/>
             <StackPanel x:Name="ApiFields">
-              <StackPanel x:Name="EndpointFields"><TextBlock Text="API 地址" Foreground="{StaticResource Muted}"/><TextBox x:Name="BaseUrlInput"/></StackPanel>
+              <StackPanel x:Name="EndpointFields"><TextBlock Text="API 地址" Foreground="{StaticResource Muted}"/><TextBox x:Name="BaseUrlInput" AutomationProperties.Name="API 地址"/></StackPanel>
               <StackPanel x:Name="WgetCloudFields" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock Text="只读取官网用户中心数据，不访问订阅链接。首次在独立浏览器窗口登录一次，之后自动复用这个浏览器保存的登录状态；不读取 Chrome Cookie，也不导出登录 Cookie。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <TextBlock Text="用户中心地址（HTTPS，结尾为 /user）" Foreground="{StaticResource Muted}" Margin="0,10,0,0"/>
-                <TextBox x:Name="WgetCloudEndpointInput" ToolTip="使用 WgetCloud 官网用户中心地址；不接受订阅地址"/>
+                <TextBox x:Name="WgetCloudEndpointInput" AutomationProperties.Name="WgetCloud 用户中心地址" ToolTip="使用 WgetCloud 官网用户中心地址；不接受订阅地址"/>
                 <Button x:Name="WgetCloudLoginButton" Content="登录并连接 WgetCloud（无需复制 Cookie）" Click="WgetCloudLogin_Click" HorizontalAlignment="Left" Margin="0,12,0,5"/>
                 <TextBlock Text="流量验证和后续刷新都在专用 WebView2 浏览器会话中完成，不会把 Cookie 复制到独立 HTTP 客户端；网站会话失效时可重新登录。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <Expander Header="高级：自定义 JSON 统计接口" Margin="0,12,0,0" IsExpanded="False">
                   <StackPanel Margin="0,8,0,0">
                     <CheckBox x:Name="WgetCloudPostCheck" Content="POST 请求（仅 /user/log_month）" Margin="0,8"/>
-                    <TextBlock Text="剩余流量字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudRemainingInput"/>
-                    <TextBlock Text="已用流量字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudUsedInput"/>
-                    <TextBlock Text="总流量字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudTotalInput"/>
+                    <TextBlock Text="剩余流量字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudRemainingInput" AutomationProperties.Name="WgetCloud 剩余流量字段路径"/>
+                    <TextBlock Text="已用流量字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudUsedInput" AutomationProperties.Name="WgetCloud 已用流量字段路径"/>
+                    <TextBlock Text="总流量字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="WgetCloudTotalInput" AutomationProperties.Name="WgetCloud 总流量字段路径"/>
                     <CheckBox x:Name="WgetCloudBytesCheck" Content="字段单位是字节（默认 GB）" Margin="0,8"/>
                     <TextBlock Text="使用 /user HTML 页面模式时，这些字段不需要填写。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                   </StackPanel>
@@ -52,9 +55,9 @@
                 <TextBlock Text="使用 Hone「安全与访问」中的账户访问令牌读取钱包余额。普通 API key 无法读取钱包。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <Button x:Name="WalletWebsiteButton" Content="打开 Hone 安全与访问" Click="WalletWebsite_Click" Margin="0,8,0,0" HorizontalAlignment="Left"/>
               </StackPanel>
-              <TextBlock x:Name="KeyLabel" Text="API key" Foreground="{StaticResource Muted}"/><PasswordBox x:Name="KeyInput"/>
+              <TextBlock x:Name="KeyLabel" Text="API key" Foreground="{StaticResource Muted}"/><PasswordBox x:Name="KeyInput" AutomationProperties.Name="访问密钥（不会显示已保存的密钥）"/>
               <TextBlock x:Name="KeyHint" Text="仅在本机保存，不会显示已有 key。" Foreground="{StaticResource Muted}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,13"/>
-              <TextBlock x:Name="EnvironmentLabel" Text="或从此环境变量读取" Foreground="{StaticResource Muted}"/><TextBox x:Name="EnvironmentInput"/>
+              <TextBlock x:Name="EnvironmentLabel" Text="或从此环境变量读取" Foreground="{StaticResource Muted}"/><TextBox x:Name="EnvironmentInput" AutomationProperties.Name="密钥环境变量名称"/>
               <StackPanel x:Name="ConnectWalletFields" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock Text="这里查询 API key 账单。需要账户钱包余额，请单独连接钱包。" TextWrapping="Wrap" Foreground="{StaticResource Muted}" FontSize="11"/>
                 <Button x:Name="ConnectWalletButton" Content="＋ 连接钱包余额" Click="ConnectWallet_Click" HorizontalAlignment="Left" Margin="0,8,0,0"/>
@@ -62,11 +65,11 @@
             </StackPanel>
             <StackPanel x:Name="CodexFields" Visibility="Collapsed">
               <Border Background="#233C36" CornerRadius="8" Padding="12" Margin="0,0,0,14"><TextBlock Text="使用这台电脑上已登录的 Codex 账户。自动读取额度窗口和重置时间，无需填写 API key。" Foreground="{StaticResource Mint}" TextWrapping="Wrap" FontSize="12"/></Border>
-              <TextBlock Text="codex.exe 路径（留空自动查找）" Foreground="{StaticResource Muted}"/><TextBox x:Name="CodexPathInput"/>
+              <TextBlock Text="codex.exe 路径（留空自动查找）" Foreground="{StaticResource Muted}"/><TextBox x:Name="CodexPathInput" AutomationProperties.Name="Codex 可执行文件路径"/>
             </StackPanel>
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="15"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <StackPanel><TextBlock Text="刷新间隔 / 分钟" Foreground="{StaticResource Muted}"/><TextBox x:Name="IntervalInput"/></StackPanel>
-              <StackPanel Grid.Column="2"><TextBlock x:Name="ThresholdLabel" Text="低额度阈值" Foreground="{StaticResource Muted}"/><TextBox x:Name="ThresholdInput"/></StackPanel>
+              <StackPanel><TextBlock Text="刷新间隔 / 分钟" Foreground="{StaticResource Muted}"/><TextBox x:Name="IntervalInput" AutomationProperties.Name="刷新间隔（分钟）"/></StackPanel>
+              <StackPanel Grid.Column="2"><TextBlock x:Name="ThresholdLabel" Text="低额度阈值" Foreground="{StaticResource Muted}"/><TextBox x:Name="ThresholdInput" AutomationProperties.Name="额度提醒阈值"/></StackPanel>
             </Grid>
             <StackPanel x:Name="CurrencyFields"><TextBlock Text="币种" Foreground="{StaticResource Muted}"/><ComboBox x:Name="CurrencyInput"><ComboBoxItem Content="USD"/><ComboBoxItem Content="CNY"/></ComboBox></StackPanel>
             <StackPanel x:Name="RelayFields" Visibility="Collapsed"><TextBlock Text="usage 换算倍数（美分 → 元：0.01）" Foreground="{StaticResource Muted}"/><TextBox x:Name="UsageMultiplierInput"/><TextBlock Text="兼容账单可能按账户或 API key 统计；消费通常是累计值。首次连接后请与站点控制台核对。" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,0,0,13"/></StackPanel>
@@ -76,23 +79,24 @@
             </StackPanel>
             <StackPanel x:Name="CustomFields" Visibility="Collapsed">
               <TextBlock Text="金额类型" Foreground="{StaticResource Muted}"/><ComboBox x:Name="KindInput"><ComboBoxItem Content="余额型"/><ComboBoxItem Content="限额型"/><ComboBoxItem Content="花费型"/></ComboBox>
-              <TextBlock Text="剩余字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="RemainingPathInput"/>
-              <TextBlock Text="已用字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="UsedPathInput"/>
-              <TextBlock Text="总额字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="TotalPathInput"/>
-              <TextBlock Text="金额换算倍数" Foreground="{StaticResource Muted}"/><TextBox x:Name="MultiplierInput"/>
-              <TextBlock Text="请求头模板 / JSON（密钥用 {key}）" Foreground="{StaticResource Muted}"/><TextBox x:Name="HeadersInput" AcceptsReturn="True" MinHeight="66" TextWrapping="Wrap"/>
+              <TextBlock Text="剩余字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="RemainingPathInput" AutomationProperties.Name="HTTP 剩余字段路径"/>
+              <TextBlock Text="已用字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="UsedPathInput" AutomationProperties.Name="HTTP 已用字段路径"/>
+              <TextBlock Text="总额字段路径（可留空）" Foreground="{StaticResource Muted}"/><TextBox x:Name="TotalPathInput" AutomationProperties.Name="HTTP 总额字段路径"/>
+              <TextBlock Text="金额换算倍数" Foreground="{StaticResource Muted}"/><TextBox x:Name="MultiplierInput" AutomationProperties.Name="HTTP 金额换算倍数"/>
+              <TextBlock Text="请求头模板 / JSON（密钥用 {key}）" Foreground="{StaticResource Muted}"/><TextBox x:Name="HeadersInput" AutomationProperties.Name="HTTP 请求头 JSON 模板" AcceptsReturn="True" MinHeight="66" TextWrapping="Wrap"/>
               <TextBlock Text="路径支持 $.data.balance、$.items[0].value；不支持过滤器或通配符。" FontSize="10" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
             </StackPanel>
             <StackPanel x:Name="BudgetFields" Visibility="Collapsed"><TextBlock Text="预算（选填，与已用金额周期一致）" Foreground="{StaticResource Muted}"/><TextBox x:Name="BudgetInput"/></StackPanel>
           </StackPanel>
         </ScrollViewer>
-        <StackPanel x:Name="Actions" Grid.Row="1" Margin="0,12,0,0">
+        <StackPanel x:Name="Actions" Grid.Row="2" Margin="0,12,0,0">
+            <TextBlock x:Name="ConnectionFeedback" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,7" AutomationProperties.LiveSetting="Polite"/>
             <WrapPanel Margin="0,5,0,10"><Button x:Name="TestButton" Content="测试连接" Click="Test_Click" Margin="0,0,8,0"/><Button x:Name="SaveButton" Content="保存账户" Background="{StaticResource Mint}" Foreground="#15231D" Click="Save_Click"/></WrapPanel>
-            <StackPanel Orientation="Horizontal"><Button x:Name="DeleteKeyButton" Content="清除密钥" Background="Transparent" Foreground="#FFB1A6" Padding="0,7,16,7" Click="DeleteKey_Click"/><Button x:Name="RemoveButton" Content="移除数据源" Background="Transparent" Foreground="{StaticResource Muted}" Padding="0,7" Click="Remove_Click"/></StackPanel>
+            <StackPanel Orientation="Horizontal"><Button x:Name="DeleteKeyButton" Content="清除密钥" Background="Transparent" Foreground="{StaticResource Danger}" Padding="0,7,16,7" Click="DeleteKey_Click"/><Button x:Name="RemoveButton" Content="移除数据源" Background="Transparent" Foreground="{StaticResource Danger}" Padding="0,7" Click="Remove_Click"/></StackPanel>
         </StackPanel>
         </Grid>
       </Border>
     </Grid>
-    <TextBlock Grid.Row="2" x:Name="StatusText" Text="更改账户后点击保存。关闭窗口不会保存未提交的更改。" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,15,0,0" MinHeight="32"/>
+    <TextBlock Grid.Row="2" x:Name="StatusText" Text="更改账户后点击保存；切换数据源或关闭窗口前会提示如何处理未保存的内容。" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,15,0,0" MinHeight="32"/>
   </Grid>
 </Window>
