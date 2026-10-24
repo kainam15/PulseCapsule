@@ -122,6 +122,7 @@ static class SettingsUiChecks
         }
         var bitmap = new RenderTargetBitmap(318, (int)Math.Ceiling(cardRoot.ActualHeight), 96, 96, PixelFormats.Pbgra32); bitmap.Render(cardRoot);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using (var file = File.Create(Path.Combine(directory, "cards-expanded.png"))) encoder.Save(file);
+        SettingsConnectionChecks.Run(app, history, Check);
         window.Close();
         Console.WriteLine($"{checks} WPF checks passed. Artifacts: {directory}");
     }

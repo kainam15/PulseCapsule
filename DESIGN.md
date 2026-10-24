@@ -26,6 +26,8 @@ Do not encode status by color alone. Verify contrast for every new state; color 
 
 Use Segoe UI / Microsoft YaHei UI; headings ~24 DIP, section headers 16–18 DIP, body ~14 DIP, supporting text 12–13 DIP. Prefer 4 DIP spacing increments: `4 / 8 / 12 / 16 / 24 / 32`. Controls should have consistent hit areas, deliberate focus/disabled/hover states, and clear labels.
 
+These text sizes guide settings and expanded reading surfaces. Collapsed and taskbar capsules need a separate compact density budget, verified for legibility at actual Windows DPI settings.
+
 ## Settings and navigation
 
 - Use three top-level pages: 数据源 / 胶囊与系统 / 桌面偏好. The source list and account editor scroll independently; keep the account action bar fixed.
@@ -36,6 +38,7 @@ Use Segoe UI / Microsoft YaHei UI; headings ~24 DIP, section headers 16–18 DIP
 - Reveal WgetCloud JSON and other specialized configuration only when relevant. Never hide required connection fields.
 - A changed form must require **Save / Discard / Cancel** on navigation, adding another source, or closing.
 - Do not equate test success with saved configuration, nor save success with verified connectivity.
+- Bind connection feedback to the exact form and request that produced it. Editing, switching sources/pages, saving, discarding, changing credentials or closing must invalidate a pending test. Obsolete success, errors and cleanup must not change the current feedback or a newer test's button state, even if the provider ignores cancellation.
 
 ## Credentials, errors and destructive operations
 
@@ -77,3 +80,4 @@ Every UI change needs: a clean build, core checks, an isolated-data desktop smok
 - [Vercel Agent Skills](https://github.com/vercel-labs/agent-skills)
 - [Taste Skill](https://github.com/Leonxlnx/taste-skill)
 - [Anthropic Skills](https://github.com/anthropics/skills)
+- [Rx.NET Switch implementation](https://github.com/dotnet/reactive/blob/main/Rx.NET/Source/src/System.Reactive/Linq/Observable/Switch.cs): retain only the current operation's notifications; PulseCapsule implements this locally without adding Rx dependencies.

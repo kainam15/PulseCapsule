@@ -22,6 +22,7 @@ public partial class SettingsWindow : Window
     private readonly HashSet<Control> invalidFields = [];
     private readonly HashSet<string> drafts = [];
     private readonly CancellationTokenSource lifetime = new();
+    private CancellationTokenSource? connectionTest;
     private static readonly (ProviderType Type, string Name)[] Types = [(ProviderType.Hone, "Hone API"), (ProviderType.HoneWallet, "Hone 钱包"), (ProviderType.Codex, "Codex"),
         (ProviderType.DeepSeek, "DeepSeek"), (ProviderType.Kimi, "Kimi"), (ProviderType.SiliconFlow, "硅基流动"),
         (ProviderType.OpenRouter, "OpenRouter"), (ProviderType.WgetCloud, "WgetCloud 流量"),
@@ -42,7 +43,7 @@ public partial class SettingsWindow : Window
         EnabledCheck.Checked += (_, _) => MarkFormDirty();
         EnabledCheck.Unchecked += (_, _) => MarkFormDirty();
         Closing += (_, e) => { if (!ResolvePendingChanges()) e.Cancel = true; };
-        Closed += (_, _) => lifetime.Cancel();
+        Closed += (_, _) => { InvalidateConnectionTest(); lifetime.Cancel(); lifetime.Dispose(); };
     }
     private static AppSettings Clone(AppSettings settings) => JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings, SettingsStore.Json), SettingsStore.Json)!;
     private void ReloadList(string? id)
@@ -73,6 +74,7 @@ public partial class SettingsWindow : Window
     }
     private void LoadProvider(ProviderConfig? p)
     {
+        InvalidateConnectionTest();
         selected = p;
         ConnectionFeedback.Text = "";
         ClearValidation();
@@ -134,7 +136,8 @@ public partial class SettingsWindow : Window
     }
     private void MarkFormDirty()
     {
-        if (loadingProvider || selected is null || formDirty) return;
+        if (loadingProvider || selected is null) return;
+        InvalidateConnectionTest();
         formDirty = true;
         UnsavedMarker.Visibility = Visibility.Visible;
         DiscardButton.IsEnabled = true;
@@ -278,6 +281,7 @@ public partial class SettingsWindow : Window
     }
     private async void WgetCloudLogin_Click(object sender, RoutedEventArgs e)
     {
+        InvalidateConnectionTest();
         WgetCloudLoginButton.IsEnabled = false;
         try
         {
@@ -322,8 +326,38 @@ public partial class SettingsWindow : Window
         finally { WgetCloudLoginButton.IsEnabled = true; }
     }
 
-    private async void Test_Click(object sender, RoutedEventArgs e)
+    private void InvalidateConnectionTest()
     {
+        if (connectionTest is not { } previous) return;
+        // Relinquish ownership before cancellation: providers can complete during
+        // cancellation or ignore it. Their continuations must not touch this form.
+        connectionTest = null;
+        TestButton.IsEnabled = true;
+        ConnectionFeedback.Text = "";
+        StatusText.Text = "连接测试已取消；请测试当前账户配置。";
+        previous.Cancel();
+    }
+    private async void Test_Click(object sender, RoutedEventArgs e) => await TestConnectionAsync(FetchTestSnapshotAsync);
+    private static async Task<QuotaSnapshot> FetchTestSnapshotAsync(ProviderConfig config, string? key, CancellationToken token)
+    {
+        using var http = new HttpQuotaProvider();
+        using var wgetCloud = new WgetCloudQuotaProvider();
+        using var browserQuota = new WgetCloudBrowserQuotaProvider();
+        IQuotaProvider provider = config.Type switch
+        {
+            ProviderType.Codex => new CodexQuotaProvider(),
+            ProviderType.WgetCloud when config.WgetCloudUseBrowserSession => browserQuota,
+            ProviderType.WgetCloud => wgetCloud,
+            _ => http
+        };
+        return await provider.FetchAsync(config, key, token);
+    }
+    private async Task TestConnectionAsync(Func<ProviderConfig, string?, CancellationToken, Task<QuotaSnapshot>> fetch)
+    {
+        if (connectionTest is not null || lifetime.IsCancellationRequested || selected is null || page != "sources") return;
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        connectionTest = request;
+        bool IsCurrent() => ReferenceEquals(connectionTest, request) && !request.IsCancellationRequested;
         TestButton.IsEnabled = false;
         ConnectionFeedback.Text = "正在测试当前表单的连接…";
         try
@@ -331,30 +365,39 @@ public partial class SettingsWindow : Window
             var config = ReadForm();
             var key = KeyInput.Password.Length > 0 ? KeyInput.Password.Trim() : app.Credentials.Read(config.Id);
             key ??= string.IsNullOrEmpty(config.SecretEnvironment) ? null : Environment.GetEnvironmentVariable(config.SecretEnvironment);
-            if (app.Monitor.Demo) { StatusText.Text = "演示模式不访问网络；请在正式实例中测试。"; return; }
-            StatusText.Text = "正在读取额度…";
-            using var http = new HttpQuotaProvider();
-            using var wgetCloud = new WgetCloudQuotaProvider();
-            using var browserQuota = new WgetCloudBrowserQuotaProvider();
-            IQuotaProvider provider = config.Type switch
+            if (app.Monitor.Demo)
             {
-                ProviderType.Codex => new CodexQuotaProvider(),
-                ProviderType.WgetCloud when config.WgetCloudUseBrowserSession => browserQuota,
-                ProviderType.WgetCloud => wgetCloud,
-                _ => http
-            };
-            var snapshot = await provider.FetchAsync(config, key, lifetime.Token);
+                StatusText.Text = ConnectionFeedback.Text = "演示模式不访问网络；请在正式实例中测试。";
+                return;
+            }
+            StatusText.Text = "正在读取额度…";
+            var snapshot = await fetch(config, key, request.Token);
+            if (!IsCurrent()) return;
             var card = new CardViewModel(config, snapshot, []);
             StatusText.Text = snapshot.Status == SnapshotStatus.Setup ? snapshot.Message : "连接成功 · " + card.PrimaryLabel + " " + card.PrimaryValue + "。点击保存后开始自动刷新。";
             ConnectionFeedback.Text = snapshot.Status == SnapshotStatus.Setup ? (snapshot.Message ?? "尚未完成配置。") : "连接测试成功 · 当前表单仍需点击「保存账户」。";
         }
-        catch (OperationCanceledException) { ConnectionFeedback.Text = "连接测试已取消。"; }
-        catch (Exception error) { ShowError(error); ConnectionFeedback.Text = StatusText.Text; }
-        finally { TestButton.IsEnabled = true; }
+        catch (OperationCanceledException)
+        {
+            if (IsCurrent()) StatusText.Text = ConnectionFeedback.Text = "连接测试已取消。";
+        }
+        catch (Exception error)
+        {
+            if (IsCurrent()) { ShowError(error); ConnectionFeedback.Text = StatusText.Text; }
+        }
+        finally
+        {
+            if (ReferenceEquals(connectionTest, request))
+            {
+                connectionTest = null;
+                TestButton.IsEnabled = true;
+            }
+        }
     }
     private void Save_Click(object sender, RoutedEventArgs e) => SaveCurrent();
     private bool SaveCurrent()
     {
+        InvalidateConnectionTest();
         try
         {
             var config = ReadForm(); var old = selected!;
@@ -518,6 +561,7 @@ public partial class SettingsWindow : Window
         try
         {
             app.Credentials.Delete(selected.Id);
+            InvalidateConnectionTest();
             KeyInput.Clear();
             KeyHint.Text = "本机保存的密钥已清除；配置的环境变量仍可能提供密钥。";
             StatusText.Text = "已清除保存的密钥；未更改环境变量配置。";
