@@ -1,5 +1,7 @@
 # Capsule Host
 
+当前架构说明；命令见 [开发与验证](development.md)，其他主题见 [文档索引](README.md)。
+
 `MainWindow` 只管理当前视图、鼠标滚轮、展开、拖动与任务栏 Dock。`ICapsule` 提供统一文字、状态、tooltip、展开内容、操作及生命周期。外壳按列表循环，不认识 Clock、Quota 或 System 的业务类型。
 
 `ClockCapsule` 每秒更新本机分钟显示。每个已启用 Provider 对应一个 `QuotaCapsule`，复用现有 `QuotaMonitor`、Credential Store、SQLite 和供应商分组卡片。Capsule 自己管理刷新；`CapsuleHost` 隔离生命周期异常、保存选择并管理轮播。
@@ -17,13 +19,20 @@
 
 ## WgetCloud 流量
 
-修复 WebView2 授权误报：浏览器已登录却被独立 HttpClient 返回 403 时不能判定 Cookie 已失效。当前登录验证调用 WebView2 的 `ExecuteScriptAsync` 读取当前 `/user` 页面的可见流量文本；启用 `WgetCloudUseBrowserSession` 后后台刷新使用同一个持久化 WebView2 用户数据目录访问 `GET /user`，而不是将 Cookie 导出给另一个 HTTP 客户端。只保存浏览器会话模式及目标 URL，不在配置或日志里存储 Cookie。旧版手动 Cookie 模式仍兼容。
+### 浏览器会话（当前连接方式）
 
-便捷授权：设置中点击「在 PulseCapsule 中登录 WgetCloud」，会在应用专属 WebView2 浏览器里打开配置的 HTTPS `/user` 页面。用户自行完成一次登录及 2FA，点击「连接此账户」后只从该 WebView2 中提取目标用户中心域名适用的 Cookie，经只读用户中心请求验证后写入 Windows 凭据管理器。独立的浏览器用户数据目录位于 `%LOCALAPPDATA%/PulseCapsule/WgetCloudBrowser/`；下次打开授权窗口会复用此登录配置文件。不会读取 Chrome 的 Cookie 文件、浏览器历史或密码，也不会触发订阅链接。会话被网站撤销时仍须在授权窗口再次登录；不声称永久有效。使用 Microsoft 官方 WebView2 WPF SDK。
+设置中点击「在 PulseCapsule 中登录 WgetCloud」，在应用专属 WebView2 打开配置的 HTTPS `/user` 页面。用户自行完成登录和 2FA，再点击「连接此账户」。`WgetCloudLoginWindow` 通过 `WgetCloudBrowserSession.ReadPageAsync` 读取当前页面可见的套餐流量；成功后保存 `WgetCloudUseBrowserSession` 及目标 URL。
 
+后台 `WgetCloudBrowserQuotaProvider` 使用同一个持久化 WebView2 profile 访问用户中心，不导出 Cookie 给独立 HttpClient，也不把浏览器 Cookie 写入 settings 或日志。profile 位于 `%LOCALAPPDATA%/PulseCapsule/WgetCloudBrowser/` 下，按站点隔离；不会读取 Chrome 的 Cookie 文件、浏览器历史或密码。网站撤销会话后需重新登录，不保证永久有效。此功能使用 Microsoft WebView2 WPF SDK，并需要可用的 WebView2 Runtime。
 
-浏览器 Network 实测：用户中心首页的套餐总量来自 `GET /user` 的 HTML document，并非单独 XHR。页面包含 `已使用/总流量：13.18/360 G` 类似标签。现在原生支持只读解析这个 HTML 页面：填写当前站点的 HTTPS `/user` 地址和用户中心会话 Cookie 即可，不需要 JSON 字段。此模式读取显示的已用/总量及可选重置日、到期日；站点 HTML 改版会明确提示错误，绝不回退到订阅链接。
+用户中心首页的套餐总量来自 `GET /user` 的 HTML document；解析已用 / 总量及可选重置日、到期日。页面改版无法解析时明确报错，不回退到订阅链接。浏览器中可读而独立 HttpClient 返回 403，不能直接当作当前 WebView2 会话失效。
 
-设置 → 添加数据源 →「WgetCloud 流量」。此数据源**永不访问订阅 URL**，节点订阅仍由代理客户端负责。WgetCloud 尚未公开用户中心 JSON API 文档，因此需先在浏览器开发者工具 Network 中找到真实的只读统计 JSON 请求；程序不猜测配额路径。用户填写请求完整 HTTPS 地址、GET/POST 方式以及至少两个字段路径（剩余、已用、总额度）。支持数值为 GB 或字节，缺少的一个字段由其余两个推算并校验，任何字段错误都明确显示失败。
+### 手动 Cookie 与统计 JSON
 
-认证采用用户自行在本机填写的会话 Cookie（`name=value`），加密存储在 Windows 凭据管理器；不要输入登录密码或私人订阅链接。仅允许无查询参数的 `https://*.wgetcloud.org/user/...`，禁止订阅/重置/购买等路径和任何跨站跳转；POST 仅可用于观察到的 `/user/log_month` 统计路径，其他仅限 GET。默认每天刷新一次，至少间隔 60 分钟；403、429 等失败遵守重试策略和原有缓存。旧版凭据即使保留订阅 URL 也会被拒绝并且不会触发网络请求。接口字段和实际鉴权还需在真实登录网站的 Network 中核对；在未配置之前 WgetCloud 不会联网。
+已有手动 Cookie 模式继续由 Windows Credential Manager 保存用户填写的 `name=value`，不输入登录密码或私人订阅链接。HTML 模式读取用户中心；高级 JSON 模式由用户根据真实 Network 请求填写完整 HTTPS URL、方法和字段路径，不猜测未公开的接口。至少提供剩余、已用、总额中的两个字段，按 GB 或字节换算，推算缺少的一个并校验一致性。
+
+### 请求边界
+
+流量请求仅允许无查询参数的 `https://*.wgetcloud.org/user/...`，拒绝订阅 / 重置 / 购买路径和跨站跳转；POST 只允许已观察到的 `/user/log_month`，其他请求限 GET。浏览器导航另允许同站登录路径，仍阻止下载、订阅和账户变更页面。节点订阅由代理客户端负责。
+
+默认每天刷新，最小间隔 60 分钟；403 / 429 等错误沿用缓存和退避。未配置时不联网；旧配置含订阅 URL 也会在发出请求前拒绝。真实接口与鉴权只能用对应站点的当前会话核实，不能用 fixture 或其他站点代替。

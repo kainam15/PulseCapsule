@@ -8,9 +8,9 @@ dist/
 *.db*
 *.log
 .env*
-AGENTS.md
 CONTEXT.md
-.agents/
+.agents/*
+!.agents/skills/
 __pycache__/
 *.pyc
 .pytest_cache/

@@ -1,5 +1,7 @@
 # PulseCapsule
 
+[文档索引](docs/README.md) · [开发与验证](docs/development.md) · [协作指南](AGENTS.md)
+
 <p align="center">
   <img src="docs/images/logo.png" alt="PulseCapsule 临时 Logo" width="128">
 </p>
@@ -19,7 +21,7 @@
 2. **Codex** 自动查找本机 Codex，并复用它已有的 ChatGPT 登录。读取官方 app-server 的 `account/rateLimits/read`；不创建会话、不发模型请求，不复制登录 token。若找不到程序，可在设置中填写 `codex.exe` 完整路径。
 3. 单击胶囊展开，点击面板外部收起；任务栏模式关闭展开面板，自由悬浮模式收回胶囊。悬停保持收起，滚轮可在 **Clock、已启用 Quota Provider、System** 之间切换并首尾循环；时间页以较大字号居中显示 `yyyy-MM-dd　HH:mm`，日期与时间留有明显间距，不显示状态圆点、“时间”标题或右侧握柄，手动选择在重启后保持，自动刷新不会跳回。按住胶囊任意可见位置并移动即可拖动；时间页隐藏圆点和右侧握柄后仍可直接拖动胶囊。展开后也可拖动标题和卡片空白区域。拖动时保持当前形态，松手自动记住位置；仅移开鼠标不会收起。点击面板内部、设置和菜单不触发收起；设置窗口打开期间保持可见。
 4. 锁定后鼠标穿透。用 **Ctrl+Alt+Q** 解锁；如冲突则尝试 **Ctrl+Alt+Shift+Q**，实际快捷键在锁定按钮提示中显示。托盘菜单始终可以解锁、刷新、设置、隐藏和退出。
-5. **嵌入左下角任务栏**：在胶囊右键菜单、托盘菜单中勾选，或在设置的“桌面偏好”中勾选并保存。胶囊使用任务栏左侧空位，同样支持悬停滚轮切换Clock / Quota / System，单击在上方展开 / 收起卡片，右侧菜单可“切回自由悬浮”。任务栏模式不拖动，切回时恢复原有悬浮位置和展开状态；重启后记住所选模式。
+5. **嵌入左下角任务栏**：在胶囊右键菜单、托盘菜单中勾选，或在设置的“桌面偏好”中勾选，偏好立即保存。胶囊使用任务栏左侧空位，同样支持悬停滚轮切换 Clock / Quota / System，单击在上方展开 / 收起卡片，右侧菜单可“切回自由悬浮”。任务栏模式不拖动，切回时恢复原有悬浮位置和展开状态；重启后记住所选模式。
 
 任务栏嵌入面向主屏幕的底部任务栏，自动适配 DPI，并根据现有系统按钮调整宽度；窄宽度优先显示完整余额。空间不足或暂时无法读取任务栏布局时回退为左下角悬浮胶囊，有空间后自动恢复嵌入。不会移动“开始”、固定图标、小工具或通知区域；不修改 Windows 的任务栏设置。隐藏胶囊和锁定穿透仍可通过托盘菜单恢复。
 
@@ -50,7 +52,7 @@ Codex 的剩余百分比与现金余额独立显示，不能换算成美元。�
 ## 常驻行为与数据
 
 - 展开卡片按供应商及服务地址分组，钱包优先，其他服务紧凑显示；每项服务保留自己的金额、币种、趋势、更新时间和异常提示，不相加。不同站点 / 租户路径分开，手动录入独立展示，自定义 HTTP 按实际查询地址分组。胶囊可逐项切换本机时间、钱包与额度；每类视图通过相同 Capsule 生命周期运行。
-- 置顶、无任务栏 / Alt+Tab 条目，点击组件不抢焦点；设置窗口可正常输入。
+- 置顶、无任务栏 / Alt+Tab 条目，后台刷新和胶囊展开收起不抢焦点；主动点击展开面板导航可获得键盘焦点，设置窗口可正常输入。
 - 每家独立刷新；最多 2 家同时读取；失败保留旧金额 / 原更新时间，指数退避，尊重 `Retry-After`；手动刷新有 15 秒间隔保护。
 - 锁屏 / 睡眠暂停，恢复后刷新；全屏游戏 / 演示自动隐藏可关闭。
 - 低额度按各平台绝对金额或 Codex 剩余百分比告警；跨阈值一次提醒，状态写入 SQLite，重启不重复弹窗。
@@ -61,50 +63,18 @@ Codex 的剩余百分比与现金余额独立显示，不能换算成美元。�
 
 ## 构建与验证
 
-需要 **.NET 10 SDK** 和 Windows。脚本依次查找 `-DotnetPath`、`PULSECAPSULE_DOTNET`、`.tools\dotnet\dotnet.exe`、本机已有 AltTabLock SDK，最后使用 PATH。
-
-README 和界面直接使用 `docs/images/logo.png` 原图，保留原始透明背景。替换后运行 `powershell -NoProfile -File tools\update-logo.ps1`，按原比例重新生成 EXE / 窗口 / 托盘使用的多尺寸 ICO，不添加底色、不修改原图。
+需要 **.NET 10 SDK** 和原生 Windows。构建脚本支持 `-DotnetPath` 或 `PULSECAPSULE_DOTNET`，也会查找本地 SDK 和 PATH。
 
 ```powershell
 .\build.ps1
 .\build.ps1 -Check
-.\build.ps1 -Publish
-# 可显式指定 SDK，无需更改系统 PATH
-.\build.ps1 -Publish -DotnetPath C:\tools\dotnet\dotnet.exe
+# 生成独立候选包
+.\build.ps1 -Publish -OutputDirectory .artifacts/candidate
 ```
 
-发布前从托盘退出正在运行的 PulseCapsule。`dist` 是生成产物，不提交到 Git。自包含 EXE 约 73 MiB，包含 .NET Desktop Runtime；首次启动会解压运行库到 Windows 用户临时缓存。采用完整解压以减少常驻内存：200% DPI 的短时演示实例工作集约 166 MiB / 私有内存约 97 MiB；正式实例读到真实 Codex 后约 210 / 130 MiB。后续占用随账户数量与历史变化。
+默认 `-Publish` 写入 `dist`，发布前从托盘退出目标实例。候选与正式 EXE 的验证、WPF 检查、桌面 smoke、只读探针及 Logo 更新命令统一维护在 [开发与验证](docs/development.md)。`dist` 和 `.artifacts` 是本机产物，不提交到 Git。
 
-```powershell
-# 阶段 0：不带 key 验证 Hone 的路由和站点计费单位
-powershell -NoProfile -File tools\probe-hone.ps1 -WithoutKey
-# 隐藏输入 key，按需把财务响应留在被 Git 忽略的 .artifacts 中
-powershell -NoProfile -File tools\probe-hone.ps1 -SaveResponse
-# Codex 只输出额度，省略账号 ID、登录凭据和重置券 ID
-python tools\probe_codex.py --exe C:\path\to\codex.exe
-```
-
-`tests/PulseCapsule.Checks` 覆盖解析、单位、缓存、重试、历史与凭据。使用 `dotnet run --project tests/PulseCapsule.Checks -c Release -- --live-codex` 可额外读取本机真实 Codex 额度。
-
-桌面测试使用用户级 `windows-desktop-e2e` 方法（pywinauto + UI Automation）：
-
-```powershell
-python -m pip install pywinauto Pillow
-python tests\desktop_smoke.py --exe dist\PulseCapsule.exe
-python tests\desktop_smoke.py --exe dist\PulseCapsule.exe --live
-python tests\drag_smoke.py --exe dist\PulseCapsule.exe
-python tests\taskbar_smoke.py --exe dist\PulseCapsule.exe
-python tests\wheel_smoke.py --exe dist\PulseCapsule.exe
-python tests\provider_group_smoke.py --exe dist\PulseCapsule.exe
-python tests\outside_click_smoke.py --exe dist\PulseCapsule.exe
-python tests\outside_click_smoke.py --exe dist\PulseCapsule.exe --docked
-python tests\system_capsule_smoke.py --exe dist\PulseCapsule.exe
-python tests\system_capsule_smoke.py --exe dist\PulseCapsule.exe --live
-python tests\capsule_settings_smoke.py --exe dist\PulseCapsule.exe
-python tests\capsule_settings_smoke.py --exe dist\PulseCapsule.exe --live
-```
-
-测试每次使用独立数据目录，不覆盖正常账户。拖动测试会操作真实鼠标，运行期间需要保持桌面空闲；检测到外部鼠标输入时会中止并报告环境干扰。`--demo` 仅用演示数据，不联网；`--data-dir` 可隔离设置与凭据命名空间；`--render` 输出 WPF 渲染图用于视觉检查，不能单独证明物理输入正常。
+自包含 EXE 包含 .NET Desktop Runtime；首次启动会解压运行库到 Windows 用户临时缓存。WgetCloud 内置登录另需要 WebView2 Runtime。`--demo` 使用演示数据、不联网；`--data-dir` 隔离设置和凭据命名空间；WPF 渲染图不能单独证明物理输入正常。
 
 ## 范围
 
@@ -112,7 +82,7 @@ python tests\capsule_settings_smoke.py --exe dist\PulseCapsule.exe --live
 
 旧名称仅保留在存储兼容常量、对应测试和历史验证记录中，仓库所在目录可继续叫 `QuotaPeek`。图标资源已更名，沿用原透明图案。
 
-本轮结果与未完成项见 [PulseCapsule 验证记录](docs/pulsecapsule-verification.md)，架构和协议依据见 [Capsule Host](docs/capsules.md)。早期研究与版本记录保留在 [docs/research.md](docs/research.md) 和 [docs/verification.md](docs/verification.md)。
+架构和协议依据见 [Capsule Host](docs/capsules.md)，当前设置验收边界见 [设置回归矩阵](docs/settings-ui-regression.md)。[PulseCapsule 0.2 验证记录](docs/pulsecapsule-verification.md) 保留 2026-10-02 的结果；早期研究与版本记录见 [文档索引](docs/README.md)，不代表当前工作树或已部署 EXE 已重新验收。
 
 ### 设置与卡片交互
 

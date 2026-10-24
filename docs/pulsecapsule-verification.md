@@ -1,5 +1,7 @@
 # PulseCapsule 0.2 验证记录
 
+> 历史验收：2026-10-02。保留当时工作目录、EXE、hash 和机器结果；不能据此断言当前工作树或正式实例通过同一验收。当前方法见 [开发与验证](development.md)，其他记录见 [文档索引](README.md)。
+
 日期：2026-10-02。环境：Windows、ASUS TX Air FA401KM_FA401KM、ASUS System Control Interface 3.1.72.0、主屏幕 200% DPI。
 
 **改名、Capsule Host 和硬件监控已部署；最重要的真实 AUTO → COOL → AUTO 验收尚未完成。生产环境没有执行风扇写入。**

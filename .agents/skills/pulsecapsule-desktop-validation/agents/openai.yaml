@@ -1,0 +1,4 @@
+interface:
+  display_name: "PulseCapsule 桌面验证"
+  short_description: "核验 WPF 交互、任务栏与候选 EXE，区分渲染和实际输入证据"
+  default_prompt: "使用 $pulsecapsule-desktop-validation 验证本次改动的候选 EXE，并记录证据与未覆盖项。"

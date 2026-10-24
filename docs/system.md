@@ -1,5 +1,7 @@
 # System Capsule：实现与验收边界
 
+当前实现与能力边界。2026-10-02 的机器测量见 [历史验收](pulsecapsule-verification.md)；复测命令见 [开发与验证](development.md)。
+
 ## 当前可用
 
 - CPU temperature、CPU Load、CPU / GPU Fan RPM，每秒采样一次；最近 120 秒只在内存保存。

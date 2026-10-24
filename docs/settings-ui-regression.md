@@ -1,22 +1,24 @@
 # Settings UI/UX regression matrix
 
-Use a **separate demo/test data directory** and never use a real credential. Close other PulseCapsule instances if running physical-input tests; do not automate a user's active desktop. Test in a native Windows interactive session.
+Living regression cases plus dated evidence. Later dated entries describe subsequent changes; earlier pass counts and candidate hashes retain their original scope. See the [development guide](development.md) for validation selection and the [documentation index](README.md) for history.
 
-## Current audit baseline
+Use a **separate demo/test data directory** and never use a real credential. Physical-input tests need an idle, unlocked native Windows interactive session; run them serially. If another instance occupies the target area, arrange a free target or an authorized exit rather than stopping unrelated processes. Visible Computer Use requires explicit consent.
 
-The pasted 2026-10-23 review describes `ba2b103`. This checklist has been reconciled against `c7071b3` and the current connection-test fix in the working tree on 2026-10-24. The original P0/P1 list is historical: existing implementations need acceptance evidence, not duplicate implementation work. Visual congestion alone is not evidence of a release-blocking defect.
+## Connection-test audit baseline (2026-10-24)
 
-| Area | Current implementation | Acceptance evidence and remaining work |
+The pasted 2026-10-23 review describes `ba2b103`. This baseline was reconciled against `c7071b3` and the connection-test fix in the working tree on 2026-10-24. The original P0/P1 list is historical: existing implementations need acceptance evidence, not duplicate implementation work. Visual congestion alone is not evidence of a release-blocking defect.
+
+| Area | Implementation at this baseline | Acceptance evidence and remaining work |
 | --- | --- | --- |
 | Header, scrolling and actions | Fixed header/actions, independently scrolling list and editor | Minimum-client WPF layout/render checks pass; physical resizing and real DPI matrix pending |
 | Unsaved account edits | Dirty marker, Save / Discard / Cancel on navigation and close | Automated discard/save checks pass; full native-dialog matrix for switch/add/close pending |
 | Remove source / clear key | Confirmation, removal scope, retained history and environment-variable warning | Source verified; confirmation/cancellation and credential failure acceptance pending |
 | Focus and accessible names | Shared focus style, named fields and live feedback | Physical keyboard, UIA naming and high-contrast acceptance pending |
 | Navigation and advanced fields | Three settings pages, integrated capsule preferences, folded WgetCloud JSON fields | WPF page/layout checks pass; live browser-session/advanced-mode scenarios pending |
-| Design system | `DESIGN.md`, semantic resources and reusable styles exist | Compact capsules and settings have separate density requirements; remaining visual review pending |
+| Design system | Design guidance (now [design.md](design.md)), semantic resources and reusable styles exist | Compact capsules and settings have separate density requirements; remaining visual review pending |
 | Connection-test ownership | Cancel and invalidate obsolete requests; guard success, errors and cleanup | 21 new automated checks pass with controlled delayed provider responses, including providers that ignore cancellation |
 
-The current run is **automation only**, as requested. No new physical-input, native-modal, screen-reader or Windows DPI acceptance is claimed. The existing WebView2 login/session flow supports authentication; WPF remains the UI framework.
+The connection-test run was **automation only**, as requested. It claimed no new physical-input, native-modal, screen-reader or Windows DPI acceptance. The existing WebView2 login/session flow supports authentication; WPF remains the UI framework.
 
 ## Behavior checklist
 

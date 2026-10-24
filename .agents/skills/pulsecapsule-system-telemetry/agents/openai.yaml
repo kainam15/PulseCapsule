@@ -1,0 +1,4 @@
+interface:
+  display_name: "PulseCapsule System 遥测"
+  short_description: "核实温度、负载与风扇 RPM 的来源，保留硬件只读及恢复能力边界"
+  default_prompt: "使用 $pulsecapsule-system-telemetry 核实当前 System 读数来源和硬件控制能力。"

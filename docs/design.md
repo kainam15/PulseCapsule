@@ -2,13 +2,15 @@
 
 > Windows desktop · WPF / .NET 10 · living guidelines (2026-10)
 
+Current design guidance; dated acceptance results live in the [settings regression matrix](settings-ui-regression.md). See the [documentation index](README.md) for other topics.
+
 ## Product principles
 
 PulseCapsule is a compact, always-available status monitor. Prioritize **glanceability**, predictable controls, safe account operations, and native Windows behavior. Avoid decorative animations, deep card nesting, and technical details in primary tasks. Prefer one column for editable forms and task-first labels.
 
 ## Tokens
 
-All shared colors and reusable control styles belong in `src/PulseCapsule/App.xaml`.
+All shared colors and reusable control styles belong in [App.xaml](../src/PulseCapsule/App.xaml).
 
 | Resource | Baseline | Intended meaning |
 | --- | --- | --- |
@@ -69,7 +71,7 @@ Retain WPF / .NET 10, current data persistence and runtime service boundaries. A
 
 ## Quality gates
 
-Every UI change needs: a clean build, core checks, an isolated-data desktop smoke where reliable, and the manual cases in `docs/settings-ui-regression.md`. Never mark modal-dialog, high-DPI or physical-input checks as passed without observing them.
+Select validation for the changed behavior using the [development guide](development.md) and affected cases in the [settings regression matrix](settings-ui-regression.md). UI code changes need a build and relevant automated checks; physical input, modal dialogs and actual Windows DPI need observed desktop evidence when those behaviors are in scope. Record unavailable cases as not-run or environment-blocked rather than rerunning unrelated suites. Wording-only documentation edits need documentation checks.
 
 ## References
 

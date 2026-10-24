@@ -1,0 +1,2 @@
+*.md text eol=lf
+.agents/**/openai.yaml text eol=lf
