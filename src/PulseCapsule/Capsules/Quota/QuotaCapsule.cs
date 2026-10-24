@@ -14,10 +14,12 @@ public sealed class QuotaCapsule : CapsuleBase
     public override string Title => config.Name;
     public override string StatusColor => color;
     public override string Footer => monitor.Demo ? "演示数据 · 仅用于预览" : monitor.Paused ? "暂停刷新" : monitor.IsRefreshing ? "正在同步…" : monitor.Warning ?? base.Footer;
-    public QuotaCapsule(ProviderConfig config, QuotaMonitor monitor, Action openSettings) : base(TimeSpan.FromSeconds(15))
+    public bool Matches(ProviderConfig value) => ReferenceEquals(config, value);
+    public QuotaCapsule(ProviderConfig config, QuotaMonitor monitor, Action<string> openSettings, Action<string> disable, Action<string, bool> saveDetails) : base(TimeSpan.FromSeconds(15))
     {
         this.config = config; this.monitor = monitor;
-        view = new(openSettings); ExpandedContent = view;
+        view = new(openSettings, monitor.RefreshProviderAsync, disable,
+            id => monitor.Settings.CardDetailsExpanded.GetValueOrDefault(id), saveDetails); ExpandedContent = view;
         monitor.Changed += Update;
         Update();
     }

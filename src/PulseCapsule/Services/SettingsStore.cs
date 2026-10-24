@@ -22,6 +22,7 @@ public sealed class SettingsStore
             foreach (var provider in settings.Providers) provider.RefreshMinutes = Math.Clamp(provider.RefreshMinutes, 1, 1440);
             settings.Capsules = CapsuleSelection.Normalize(settings.Capsules);
             settings.System ??= new();
+            settings.CardDetailsExpanded ??= [];
             settings.CarouselSeconds = Math.Clamp(settings.CarouselSeconds, 5, 3600);
             return settings;
         }

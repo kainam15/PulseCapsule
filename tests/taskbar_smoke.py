@@ -99,10 +99,10 @@ def enable_docking():
     settings = main.child_window(title='PulseCapsule 设置', control_type='Window')
     settings.wait('visible', timeout=10)
     settings = Desktop(backend='uia').window(handle=settings.handle)
+    settings.child_window(auto_id='DesktopNav').select()
     box = settings.child_window(auto_id='TaskbarDockCheck', control_type='CheckBox')
     if box.get_toggle_state() == 0:
         box.toggle()
-    settings.child_window(auto_id='SavePreferencesButton', control_type='Button').invoke()
     wait_until(15, .1, lambda: bool(capsule_handle()))
     settings_handle = settings.handle
     settings.close()

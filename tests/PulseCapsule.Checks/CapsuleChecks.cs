@@ -124,6 +124,12 @@ static class CapsuleChecks
                 check("refresh failure does not invalidate host enumeration", good.Disposed && hidden.Refreshes > 0 && host.Current?.Status == CapsuleStatus.Unavailable);
                 hidden.FailResume = true; host.Resume().GetAwaiter().GetResult();
                 check("resume failure does not invalidate host enumeration", hidden.Disposed && host.Capsules.All(c => c.Status == CapsuleStatus.Unavailable));
+                var clock = new FakeCapsule("clock"); var quota = new FakeCapsule("quota:first"); var system = new FakeCapsule("system");
+                host.Configure(settings, [clock, quota, system]).GetAwaiter().GetResult();
+                host.SelectFamily("quota");
+                check("visible family navigation selects and remembers quota", host.Current == quota && settings.LastCapsuleId == quota.Id);
+                host.SelectFamily("system"); host.SelectFamily("missing");
+                check("missing navigation destination preserves current selection", host.Current == system);
             }
             catch (Exception error) { failure = error; }
         });

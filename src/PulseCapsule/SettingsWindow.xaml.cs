@@ -3,7 +3,6 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using Microsoft.Win32;
 using PulseCapsule.Services;
 using PulseCapsule.UI;
 
@@ -17,6 +16,10 @@ public partial class SettingsWindow : Window
     private bool loadingProvider;
     private bool changingProvider;
     private bool formDirty;
+    private bool loadingPreferences = true;
+    private string page = "sources";
+    private bool changingPage;
+    private readonly HashSet<Control> invalidFields = [];
     private readonly HashSet<string> drafts = [];
     private readonly CancellationTokenSource lifetime = new();
     private static readonly (ProviderType Type, string Name)[] Types = [(ProviderType.Hone, "Hone API"), (ProviderType.HoneWallet, "Hone 钱包"), (ProviderType.Codex, "Codex"),
@@ -29,15 +32,12 @@ public partial class SettingsWindow : Window
         this.app = app;
         working = Clone(app.Monitor.Settings);
         AddType.ItemsSource = Types.Select(t => t.Name); AddType.SelectedIndex = 0;
-        NotifyCheck.IsChecked = working.Notifications;
-        FullscreenCheck.IsChecked = working.AutoHideFullscreen;
-        TaskbarDockCheck.IsChecked = working.TaskbarDocked;
-        StartupCheck.IsChecked = working.StartWithWindows;
+        LoadPreferences();
         ReloadList(working.Providers.FirstOrDefault()?.Id);
-        Editor.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => MarkFormDirty()), true);
+        Editor.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, e) => { if (e.OriginalSource is Control field) FieldFeedback.SetError(field, ""); MarkFormDirty(); }), true);
         Editor.AddHandler(PasswordBox.PasswordChangedEvent, new RoutedEventHandler((_, _) => MarkFormDirty()), true);
-        Editor.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => MarkFormDirty()), true);
-        Editor.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => MarkFormDirty()), true);
+        Editor.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is CheckBox) MarkFormDirty(); }), true);
+        Editor.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is CheckBox) MarkFormDirty(); }), true);
         Editor.AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler((_, _) => MarkFormDirty()), true);
         EnabledCheck.Checked += (_, _) => MarkFormDirty();
         EnabledCheck.Unchecked += (_, _) => MarkFormDirty();
@@ -75,7 +75,9 @@ public partial class SettingsWindow : Window
     {
         selected = p;
         ConnectionFeedback.Text = "";
-        if (p is null) { ClearFormDirty(); return; }
+        ClearValidation();
+        if (p is null) { TypeTitle.Text = "请选择数据源"; Editor.Visibility = Visibility.Collapsed; EnabledCheck.IsEnabled = false; ClearFormDirty(); return; }
+        Editor.Visibility = Visibility.Visible; EnabledCheck.IsEnabled = true;
         loadingProvider = true;
         try
         {
@@ -135,12 +137,14 @@ public partial class SettingsWindow : Window
         if (loadingProvider || selected is null || formDirty) return;
         formDirty = true;
         UnsavedMarker.Visibility = Visibility.Visible;
+        DiscardButton.IsEnabled = true;
         ConnectionFeedback.Text = "表单内容已修改，先前的连接测试结果可能已失效。";
     }
     private void ClearFormDirty()
     {
         formDirty = false;
         UnsavedMarker.Visibility = Visibility.Collapsed;
+        DiscardButton.IsEnabled = false;
     }
     private bool ResolvePendingChanges()
     {
@@ -154,17 +158,18 @@ public partial class SettingsWindow : Window
     }
     private ProviderConfig ReadForm()
     {
+        ClearValidation();
         if (selected is null) throw new ProviderException("请先选择一个数据源。");
         var config = selected with { Http = selected.Http with { } };
         config.Name = NameInput.Text.Trim();
-        if (config.Name.Length == 0) throw new ProviderException("请填写显示名称。");
+        if (config.Name.Length == 0) throw Invalid(NameInput, "请填写显示名称。");
         config.Enabled = EnabledCheck.IsChecked == true;
-        if (!int.TryParse(IntervalInput.Text, out var interval) || interval < 1 || interval > 1440) throw new ProviderException("刷新间隔须在 1–1440 分钟之间。");
+        if (!int.TryParse(IntervalInput.Text, out var interval) || interval < 1 || interval > 1440) throw Invalid(IntervalInput, "刷新间隔须在 1–1440 分钟之间。");
         config.RefreshMinutes = interval;
         if (config.Type == ProviderType.WgetCloud && interval < 60)
-            throw new ProviderException("WgetCloud 至少间隔 60 分钟查询一次，避免频繁触发订阅限制。");
-        config.LowThreshold = Number(ThresholdInput.Text, "阈值", false)!.Value;
-        if (config.LowThreshold < 0 || config.Type == ProviderType.Codex && config.LowThreshold > 100) throw new ProviderException("阈值无效；Codex 应为 0–100%。");
+            throw Invalid(IntervalInput, "WgetCloud 至少间隔 60 分钟查询一次，避免频繁触发订阅限制。");
+        config.LowThreshold = Number(ThresholdInput, "阈值", false)!.Value;
+        if (config.LowThreshold < 0 || config.Type == ProviderType.Codex && config.LowThreshold > 100) throw Invalid(ThresholdInput, "阈值无效；Codex 应为 0–100%。");
         config.Currency = CurrencyInput.SelectedIndex == 1 ? "CNY" : "USD";
         config.SecretEnvironment = EnvironmentInput.Text.Trim();
         config.CodexExecutable = CodexPathInput.Text.Trim();
@@ -180,68 +185,69 @@ public partial class SettingsWindow : Window
             config.WgetCloudValuesAreBytes = WgetCloudBytesCheck.IsChecked == true;
             if (config.Http.Url.Length > 0)
             {
-                var uri = WgetCloudQuotaProvider.ValidateDashboardUrl(config.Http.Url, config.WgetCloudUsePost);
+                var uri = ValidateField(WgetCloudEndpointInput, () => WgetCloudQuotaProvider.ValidateDashboardUrl(config.Http.Url, config.WgetCloudUsePost));
                 if (uri.AbsolutePath.TrimEnd('/').Equals("/user", StringComparison.OrdinalIgnoreCase))
                     config.WgetCloudUsePost = false;
             }
             using var empty = JsonDocument.Parse("{}");
-            foreach (var path in new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath })
-                if (path.Length > 0) JsonFields.Get(empty.RootElement, path);
+            foreach (var field in new[] { WgetCloudRemainingInput, WgetCloudUsedInput, WgetCloudTotalInput })
+                if (field.Text.Trim().Length > 0) ValidateField(field, () => JsonFields.Get(empty.RootElement, field.Text.Trim()));
             if (KeyInput.Password.Length > 0 && !WgetCloudQuotaProvider.IsSessionCookie(KeyInput.Password.Trim()))
-                throw new ProviderException("请填写有效的会话 Cookie（name=value），不能使用订阅链接或密码。");
+                throw Invalid(KeyInput, "请填写有效的会话 Cookie（name=value），不能使用订阅链接或密码。");
         }
         if (config.NeedsSecret && config.Type != ProviderType.WgetCloud)
         {
             var url = BaseUrlInput.Text.Trim();
-            HttpQuotaProvider.ValidateUrl(url);
+            ValidateField(BaseUrlInput, () => HttpQuotaProvider.ValidateUrl(url));
             if (url.Contains("{key}", StringComparison.OrdinalIgnoreCase) || url.Contains("key=", StringComparison.OrdinalIgnoreCase) || url.Contains("token=", StringComparison.OrdinalIgnoreCase))
-                throw new ProviderException("密钥请放入请求头模板，不要填在 URL 中。");
+                throw Invalid(BaseUrlInput, "密钥请放入请求头模板，不要填在 URL 中。");
             if (config.Type == ProviderType.Custom) config.Http.Url = url; else config.BaseUrl = url;
         }
         if (config.Type is ProviderType.Hone or ProviderType.Relay)
         {
-            config.UsageMultiplier = Number(UsageMultiplierInput.Text, "换算倍数", false)!.Value;
-            if (config.UsageMultiplier <= 0) throw new ProviderException("换算倍数必须大于 0。");
+            config.UsageMultiplier = Number(UsageMultiplierInput, "换算倍数", false)!.Value;
+            if (config.UsageMultiplier <= 0) throw Invalid(UsageMultiplierInput, "换算倍数必须大于 0。");
         }
         if (config.Type is ProviderType.Manual or ProviderType.Custom)
         {
-            config.Budget = Number(BudgetInput.Text, "预算", true);
-            if (config.Budget < 0) throw new ProviderException("预算不能为负数。");
+            config.Budget = Number(BudgetInput, "预算", true);
+            if (config.Budget < 0) throw Invalid(BudgetInput, "预算不能为负数。");
         }
         if (config.Type == ProviderType.Manual)
         {
-            config.ManualRemaining = Number(ManualRemainingInput.Text, "余额", true);
-            config.ManualUsed = Number(ManualUsedInput.Text, "已用", true);
-            if (config.ManualUsed < 0) throw new ProviderException("已用金额不能为负数。");
-            if (config.ManualRemaining is null && config.ManualUsed is null) throw new ProviderException("至少录入一个金额。");
+            config.ManualRemaining = Number(ManualRemainingInput, "余额", true);
+            config.ManualUsed = Number(ManualUsedInput, "已用", true);
+            if (config.ManualUsed < 0) throw Invalid(ManualUsedInput, "已用金额不能为负数。");
+            if (config.ManualRemaining is null && config.ManualUsed is null) throw Invalid(ManualRemainingInput, "至少录入一个金额。");
             config.ManualUpdatedAt = DateTimeOffset.UtcNow;
         }
         if (config.Type == ProviderType.Custom)
         {
             config.Http.Kind = (QuotaKind)Math.Clamp(KindInput.SelectedIndex, 0, 2);
             config.Http.RemainingPath = RemainingPathInput.Text.Trim(); config.Http.UsedPath = UsedPathInput.Text.Trim(); config.Http.TotalPath = TotalPathInput.Text.Trim();
-            config.Http.Multiplier = Number(MultiplierInput.Text, "换算倍数", false)!.Value;
-            if (config.Http.Multiplier <= 0) throw new ProviderException("换算倍数必须大于 0。");
+            config.Http.Multiplier = Number(MultiplierInput, "换算倍数", false)!.Value;
+            if (config.Http.Multiplier <= 0) throw Invalid(MultiplierInput, "换算倍数必须大于 0。");
             using var empty = JsonDocument.Parse("{}");
-            foreach (var path in new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath })
-                if (path.Length > 0) JsonFields.Get(empty.RootElement, path);
-            if (new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath }.All(string.IsNullOrWhiteSpace)) throw new ProviderException("请填写至少一个字段路径。");
+            foreach (var field in new[] { RemainingPathInput, UsedPathInput, TotalPathInput })
+                if (field.Text.Trim().Length > 0) ValidateField(field, () => JsonFields.Get(empty.RootElement, field.Text.Trim()));
+            if (new[] { config.Http.RemainingPath, config.Http.UsedPath, config.Http.TotalPath }.All(string.IsNullOrWhiteSpace)) throw Invalid(RemainingPathInput, "请填写至少一个字段路径。");
             try { config.Http.Headers = JsonSerializer.Deserialize<Dictionary<string, string>>(HeadersInput.Text) ?? throw new JsonException(); }
-            catch (JsonException) { throw new ProviderException("请求头必须是 JSON 字符串字典。"); }
+            catch (JsonException) { throw Invalid(HeadersInput, "请求头必须是 JSON 字符串字典。"); }
             foreach (var pair in config.Http.Headers)
                 if (pair.Value is null || pair.Value.Contains("sk-") || (new[] { "authorization", "key", "token", "secret" }.Any(word => pair.Key.Contains(word, StringComparison.OrdinalIgnoreCase)) && !pair.Value.Contains("{key}")))
-                    throw new ProviderException("请求头中请用 {key} 引用密钥，不要写入实际 key。");
+                    throw Invalid(HeadersInput, "请求头中请用 {key} 引用密钥，不要写入实际 key。");
         }
         var endpointChanged = config.BaseUrl != selected.BaseUrl || config.Http.Url != selected.Http.Url;
         if (endpointChanged && config.NeedsSecret && KeyInput.Password.Length == 0 && app.Credentials.Read(selected.Id) is not null && config.Type != ProviderType.WgetCloud)
-            throw new ProviderException("接口地址已改变，请重新输入该地址对应的 key。");
+            throw Invalid(KeyInput, "接口地址已改变，请重新输入该地址对应的 key。");
         return config;
     }
-    private static decimal? Number(string value, string label, bool optional)
+    private decimal? Number(TextBox field, string label, bool optional)
     {
+        var value = field.Text;
         if (optional && string.IsNullOrWhiteSpace(value)) return null;
         if (decimal.TryParse(value.Trim(), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var number)) return number;
-        throw new ProviderException(label + "应填写数字，小数点使用 .。");
+        throw Invalid(field, label + "应填写数字，小数点使用 .。");
     }
     private void Add_Click(object sender, RoutedEventArgs e)
     {
@@ -373,43 +379,134 @@ public partial class SettingsWindow : Window
         }
         catch (Exception error) { ShowError(error); return false; }
     }
-    private void Commit(string? savingId = null, bool saveDocking = false)
+    private void Commit(string? savingId = null)
     {
-        working.Capsules = app.Settings.Capsules.Select(p => p with { }).ToList();
-        working.System = app.Settings.System with { };
-        working.LastCapsuleId = app.Settings.LastCapsuleId;
-        working.AutoRotate = app.Settings.AutoRotate; working.CarouselSeconds = app.Settings.CarouselSeconds;
-        // Window coordinates can change while settings are open.
-        working.LeftPixels = app.Monitor.Settings.LeftPixels; working.TopPixels = app.Monitor.Settings.TopPixels;
-        working.StartExpanded = app.Monitor.Settings.StartExpanded;
-        if (!saveDocking) working.TaskbarDocked = app.Monitor.Settings.TaskbarDocked;
-        var committed = Clone(working);
-        committed.Providers = committed.Providers.Where(p => !drafts.Contains(p.Id) || p.Id == savingId).ToList();
-        app.SaveSettings(committed);
+        // Merge account edits into the latest globals and window position, not a stale dialog copy.
+        var providers = working.Providers.Where(p => !drafts.Contains(p.Id) || p.Id == savingId).ToList();
+        app.SaveSettings(app.Settings with { Providers = providers });
     }
-    private void Capsules_Click(object sender, RoutedEventArgs e)
+    private void Discard_Click(object sender, RoutedEventArgs e)
     {
-        var existing = app.Windows.OfType<CapsuleSettingsWindow>().FirstOrDefault();
-        if (existing is not null) { existing.Activate(); return; }
-        new CapsuleSettingsWindow(app) { Owner = this }.Show();
+        var id = selected?.Id;
+        if (id is not null && drafts.Remove(id)) working.Providers.RemoveAll(p => p.Id == id);
+        ReloadList(id);
+        StatusText.Text = "已放弃当前账户的未保存修改。";
     }
-    private void Preferences_Click(object sender, RoutedEventArgs e)
+    public bool SelectProvider(string id)
+    {
+        if (!ResolvePendingChanges()) return false;
+        working = Clone(app.Settings);
+        ReloadList(id);
+        ShowPage("sources");
+        return true;
+    }
+    private void Page_Click(object sender, RoutedEventArgs e)
+    {
+        if (loadingPreferences || changingPage) return;
+        var next = (string)((FrameworkElement)sender).Tag;
+        if (next == page) return;
+        if (!ResolvePendingChanges()) { ShowPage(page); return; }
+        working = Clone(app.Settings);
+        ReloadList(selected?.Id);
+        LoadPreferences();
+        ShowPage(next);
+    }
+    private void ShowPage(string next)
+    {
+        changingPage = true;
+        try
+        {
+            page = next;
+            SourcesPage.Visibility = next == "sources" ? Visibility.Visible : Visibility.Collapsed;
+            CapsulesPage.Visibility = next == "capsules" ? Visibility.Visible : Visibility.Collapsed;
+            DesktopPage.Visibility = next == "desktop" ? Visibility.Visible : Visibility.Collapsed;
+            SourcesNav.IsChecked = next == "sources";
+            CapsuleSettingsButton.IsChecked = next == "capsules";
+            DesktopNav.IsChecked = next == "desktop";
+        }
+        finally { changingPage = false; }
+    }
+    private sealed record CapsuleItem(string Id, string Name, bool Enabled);
+    private void LoadPreferences(string? selectedId = null)
+    {
+        loadingPreferences = true;
+        try
+        {
+            var settings = app.Settings;
+            NotifyCheck.IsChecked = settings.Notifications;
+            FullscreenCheck.IsChecked = settings.AutoHideFullscreen;
+            TaskbarDockCheck.IsChecked = settings.TaskbarDocked;
+            StartupCheck.IsChecked = settings.StartWithWindows;
+            RotateCheck.IsChecked = settings.AutoRotate;
+            RotateSeconds.ItemsSource = new[] { 5, 15, 30, 60, 300, 900, 3600, settings.CarouselSeconds }.Distinct().Order().ToList();
+            RotateSeconds.SelectedItem = settings.CarouselSeconds;
+            TemperatureCheck.IsChecked = settings.System.Temperature;
+            FanRpmCheck.IsChecked = settings.System.FanRpm;
+            FanControlCheck.IsChecked = settings.System.FanControl;
+            var items = settings.Capsules.Select(p => new CapsuleItem(p.Id, p.Id switch { "clock" => "时间", "quota" => "额度", _ => "系统" }, p.Enabled)).ToList();
+            CapsuleList.ItemsSource = items;
+            CapsuleList.SelectedItem = items.FirstOrDefault(p => p.Id == selectedId) ?? items.First();
+        }
+        finally { loadingPreferences = false; }
+    }
+    private void SavePreferences(AppSettings settings, string? selectedId = null)
     {
         try
         {
-            var startup = StartupCheck.IsChecked == true;
-            if (startup != working.StartWithWindows)
-            {
-                using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-                if (startup) key.SetValue(DataIdentity.ProductName, "\"" + Environment.ProcessPath + "\""); else key.DeleteValue(DataIdentity.ProductName, false);
-                key.DeleteValue(DataIdentity.LegacyName, false);
-            }
-            working.StartWithWindows = startup;
-            working.Notifications = NotifyCheck.IsChecked == true; working.AutoHideFullscreen = FullscreenCheck.IsChecked == true;
-            working.TaskbarDocked = TaskbarDockCheck.IsChecked == true;
-            Commit(saveDocking: true); StatusText.Text = "桌面偏好已保存。";
+            if (!settings.Capsules.Any(p => p.Enabled)) throw new ProviderException("至少启用一个胶囊；本次更改未保存。");
+            app.SavePreferences(settings);
+            StatusText.Text = "已保存 · 全局偏好已生效。";
         }
-        catch (Exception error) { ShowError(error); }
+        catch (Exception error) { ShowError(error); StatusText.Text += " 更改未保存，已恢复原值。"; }
+        finally { LoadPreferences(selectedId); }
+    }
+    private void GlobalPreference_Click(object sender, RoutedEventArgs e)
+    {
+        if (loadingPreferences) return;
+        SavePreferences(app.Settings with {
+            Notifications = NotifyCheck.IsChecked == true, AutoHideFullscreen = FullscreenCheck.IsChecked == true,
+            TaskbarDocked = TaskbarDockCheck.IsChecked == true, StartWithWindows = StartupCheck.IsChecked == true,
+            AutoRotate = RotateCheck.IsChecked == true,
+            System = new() { Temperature = TemperatureCheck.IsChecked == true, FanRpm = FanRpmCheck.IsChecked == true, FanControl = FanControlCheck.IsChecked == true }
+        }, (CapsuleList.SelectedItem as CapsuleItem)?.Id);
+    }
+    private void Rotation_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!loadingPreferences && RotateSeconds.SelectedItem is int seconds)
+            SavePreferences(app.Settings with { CarouselSeconds = seconds });
+    }
+    private void CapsuleEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (loadingPreferences) return;
+        var check = (CheckBox)sender;
+        var id = (string)check.Tag;
+        if (app.Settings.Capsules.First(p => p.Id == id).Enabled == (check.IsChecked == true)) return;
+        SavePreferences(app.Settings with { Capsules = app.Settings.Capsules.Select(p => p.Id == id ? p with { Enabled = check.IsChecked == true } : p with { }).ToList() }, id);
+    }
+    private void MoveCapsule(int delta)
+    {
+        var index = CapsuleList.SelectedIndex;
+        var items = app.Settings.Capsules.Select(p => p with { }).ToList();
+        if (index < 0 || index + delta < 0 || index + delta >= items.Count) return;
+        var item = items[index]; items.RemoveAt(index); items.Insert(index + delta, item);
+        SavePreferences(app.Settings with { Capsules = items }, item.Id);
+    }
+    private void Up_Click(object sender, RoutedEventArgs e) => MoveCapsule(-1);
+    private void Down_Click(object sender, RoutedEventArgs e) => MoveCapsule(1);
+    private ProviderException Invalid(Control field, string message)
+    {
+        invalidFields.Add(field);
+        return FieldFeedback.Invalid(field, message);
+    }
+    private T ValidateField<T>(Control field, Func<T> read)
+    {
+        try { return read(); }
+        catch (ProviderException error) { throw Invalid(field, error.Message); }
+    }
+    private void ClearValidation()
+    {
+        foreach (var field in invalidFields) FieldFeedback.SetError(field, "");
+        invalidFields.Clear();
     }
     private void DeleteKey_Click(object sender, RoutedEventArgs e)
     {

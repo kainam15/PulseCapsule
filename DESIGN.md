@@ -28,7 +28,8 @@ Use Segoe UI / Microsoft YaHei UI; headings ~24 DIP, section headers 16–18 DIP
 
 ## Settings and navigation
 
-- Keep data sources distinct from global desktop preferences and capsule management.
+- Use three top-level pages: 数据源 / 胶囊与系统 / 桌面偏好. The source list and account editor scroll independently; keep the account action bar fixed.
+- Account changes use explicit Save / Discard / Cancel. Global toggles, ordering and rotation interval save immediately; show saved feedback and restore the prior value when persistence fails. Global preferences must preserve quota backoff and in-flight requests.
 - Make the selected data source unmistakable. Treat adding a source as a separate unsaved task.
 - Structure forms as **identity and enabled state → connection → credentials → refresh and reminders → advanced options**.
 - Keep the source title and enabled state outside the scroll area; preserve a fixed action bar.
@@ -51,6 +52,13 @@ Use Segoe UI / Microsoft YaHei UI; headings ~24 DIP, section headers 16–18 DIP
 - Support minimum settings window dimensions, long localized text and Windows 100/125/150/200% DPI.
 - Never let scrollbars or clipping make important operations inaccessible.
 - Confirm colors and semantics under Windows light and dark system modes.
+
+## Expanded cards
+
+- Expose 时间 / 额度 / 系统 navigation beneath the header, with selection and keyboard focus visible. Left/right keys operate within this navigation. A deliberate navigation click may acquire keyboard focus; background refreshes must not activate the window.
+- Keep name, status, primary/secondary values and update time in the summary. Remember details per source ID. Codex rate windows and resets always remain visible.
+- Move forecasts, trends and healthy WgetCloud plan notes into details. Errors retain inline Retry and Settings actions; each source has its own refresh/edit/disable menu.
+- Trend plots require at least three distinct samples spanning one hour, use elapsed time for X and include zero in Y. Show exact point tooltips, scale and observed change; do not imply a complete week of samples.
 
 ## Performance and constraints
 

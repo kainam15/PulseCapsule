@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private string unlock = "托盘菜单";
     private bool rendered, positioned, loaded, dockMode;
     private int capsuleWheelDelta;
+    private bool renderingNavigation;
 
     public MainWindow(App app)
     {
@@ -74,7 +75,7 @@ public partial class MainWindow : Window
         {
             if (loaded) return;
             loaded = true;
-            CardsScroll.MaxHeight = Math.Max(160, Math.Min(560, SystemParameters.WorkArea.Height - 150));
+            CardsScroll.MaxHeight = Math.Max(120, Math.Min(510, SystemParameters.WorkArea.Height - 210));
             SetExpanded(!app.Settings.TaskbarDocked && app.Settings.StartExpanded, false);
             Render(); UpdateLayout();
             timer.Start();
@@ -120,6 +121,15 @@ public partial class MainWindow : Window
         CapsuleContent.Content = app.Host.Current?.ExpandedContent;
         RenderCapsule();
         var current = app.Host.Current;
+        renderingNavigation = true;
+        foreach (var tab in CapsuleNavigation.Children.OfType<RadioButton>())
+        {
+            var family = (string)tab.Tag;
+            tab.IsChecked = current?.Id.Split(':')[0] == family;
+            tab.IsEnabled = app.Host.Capsules.Any(c => c.Id.Split(':')[0] == family);
+            tab.ToolTip = tab.IsEnabled ? "左右方向键切换；收起时也可使用滚轮" : "在设置中启用此胶囊及其数据源";
+        }
+        renderingNavigation = false;
         var tooltip = current?.Tooltip ?? "PulseCapsule";
         tray.Text = tooltip.Length > 120 ? tooltip[..120] : tooltip.Length == 0 ? "PulseCapsule" : tooltip;
         Subtitle.Text = current?.Title ?? "Capsules";
@@ -179,6 +189,32 @@ public partial class MainWindow : Window
     }
 
     private void Capsule_MouseLeave(object sender, MouseEventArgs e) => capsuleWheelDelta = 0;
+
+    private void Navigation_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = (RadioButton)sender;
+        app.Host.SelectFamily((string)tab.Tag);
+        CardsScroll.ScrollToTop();
+        // Keyboard focus is opt-in through an explicit navigation click; background updates stay NOACTIVATE.
+        WindowNative.ActivateForKeyboard(this);
+        tab.Focus();
+    }
+    private void Navigation_Checked(object sender, RoutedEventArgs e)
+    {
+        if (renderingNavigation || app is null) return;
+        app.Host.SelectFamily((string)((RadioButton)sender).Tag);
+        CardsScroll.ScrollToTop();
+    }
+    private void Navigation_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Left or Key.Right)) return;
+        var tabs = CapsuleNavigation.Children.OfType<RadioButton>().Where(t => t.IsEnabled).ToList();
+        if (tabs.Count < 2) return;
+        var current = tabs.FindIndex(t => t.IsChecked == true);
+        var next = tabs[(current + (e.Key == Key.Right ? 1 : -1) + tabs.Count) % tabs.Count];
+        app.Host.SelectFamily((string)next.Tag);
+        CardsScroll.ScrollToTop(); next.Focus(); e.Handled = true;
+    }
 
     private void CycleCapsule(MouseWheelEventArgs e)
     {

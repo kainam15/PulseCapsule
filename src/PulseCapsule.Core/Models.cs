@@ -101,6 +101,7 @@ public sealed record AppSettings
     public bool AutoRotate { get; set; }
     public int CarouselSeconds { get; set; } = 15;
     public SystemPreferences System { get; set; } = new();
+    public Dictionary<string, bool> CardDetailsExpanded { get; set; } = [];
 }
 
 public sealed class ProviderException(string message, TimeSpan? retryAfter = null) : Exception(message)

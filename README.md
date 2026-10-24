@@ -113,3 +113,9 @@ python tests\capsule_settings_smoke.py --exe dist\PulseCapsule.exe --live
 旧名称仅保留在存储兼容常量、对应测试和历史验证记录中，仓库所在目录可继续叫 `QuotaPeek`。图标资源已更名，沿用原透明图案。
 
 本轮结果与未完成项见 [PulseCapsule 验证记录](docs/pulsecapsule-verification.md)，架构和协议依据见 [Capsule Host](docs/capsules.md)。早期研究与版本记录保留在 [docs/research.md](docs/research.md) 和 [docs/verification.md](docs/verification.md)。
+
+### 设置与卡片交互
+
+设置窗口分为“数据源／胶囊与系统／桌面偏好”。账户连接需点击“保存账户”，可直接“放弃修改”；全局勾选、排序和轮播间隔即时保存，失败恢复原值。切换页面或关闭窗口仍会保护未保存的账户修改。
+
+展开面板可通过“时间／额度／系统”切换，点击导航后支持左右方向键；收起时保留滚轮切换。卡片默认显示摘要，详情展开状态按数据源保存。Codex 的额度窗口和重置时间始终可见。每项服务的“···”菜单支持单项刷新、修改连接与停用，刷新仍遵守限流等待期。

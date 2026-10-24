@@ -50,6 +50,20 @@ public sealed class QuotaMonitor : IDisposable
         Changed?.Invoke();
     }
 
+    // Presentation preferences must not reset in-flight requests, Retry-After or backoff.
+    public void ApplyPreferences(AppSettings settings)
+    {
+        Settings = settings;
+        Changed?.Invoke();
+    }
+
+    public Task RefreshProviderAsync(string id)
+    {
+        var config = Settings.Providers.FirstOrDefault(p => p.Id == id && p.Enabled);
+        return config is null || Paused || lifetime.IsCancellationRequested || Demo
+            ? Task.CompletedTask : FetchOne(config, true);
+    }
+
     private void Restore()
     {
         foreach (var config in Settings.Providers)

@@ -18,8 +18,13 @@ public sealed class CardViewModel
     public string SecondaryText { get; }
     public Visibility SecondaryVisibility => SecondaryText.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     public string Updated { get; }
+    public string UpdatedExact => Snapshot?.FetchedAt?.ToLocalTime().ToString("yyyy年M月d日 HH:mm:ss zzz") ?? "尚未读取数据";
     public string Scope { get; }
     public string? Message { get; }
+    public string? DetailMessage { get; }
+    public Visibility DetailMessageVisibility => string.IsNullOrEmpty(DetailMessage) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility DetailsVisibility => Trend.Count >= 3 || Forecast.Length > 0 || !string.IsNullOrEmpty(DetailMessage) ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility RetryVisibility => Snapshot?.Status is SnapshotStatus.Error or SnapshotStatus.Stale ? Visibility.Visible : Visibility.Collapsed;
     public Visibility MessageVisibility => string.IsNullOrWhiteSpace(Message) ? Visibility.Collapsed : Visibility.Visible;
     public Visibility MoneyVisibility => Snapshot?.Kind == QuotaKind.RateWindow ? Visibility.Collapsed : Visibility.Visible;
     public List<WindowViewModel> Windows { get; } = [];
@@ -29,6 +34,9 @@ public sealed class CardViewModel
     public Visibility ForecastTextVisibility => Forecast.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ResetsVisibility => ResetCredits.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     public PointCollection Trend { get; } = [];
+    public List<TrendPoint> TrendPoints { get; } = [];
+    public string TrendSummary { get; } = "";
+    public string TrendScale { get; } = "";
     public Visibility TrendVisibility => Trend.Count < 3 ? Visibility.Collapsed : Visibility.Visible;
     public string TrendLabel => Config.Type == ProviderType.WgetCloud ? "7 日剩余流量趋势 · 本机记录" : "7 日余额趋势 · 本机记录";
     public bool NeedsSetup => Snapshot?.Status == SnapshotStatus.Setup;
@@ -53,18 +61,34 @@ public sealed class CardViewModel
             : snapshot?.UsedMonth is not null ? "本月已用  " + Money(snapshot.UsedMonth, snapshot.Currency)
             : snapshot?.Used is not null && snapshot.Remaining is not null ? snapshot.UsageLabel + "  " + Money(snapshot.Used, snapshot.Currency)
             : snapshot?.Total is not null ? "总额度  " + Money(snapshot.Total, snapshot.Currency) : "";
-        Updated = snapshot?.FetchedAt is { } time ? "更新于 " + time.ToLocalTime().ToString("HH:mm") : "尚未读取数据";
-        Message = snapshot?.Message;
-        Forecast = snapshot?.EstimatedDays is { } days ? $"按近期消耗，预计可用 {days:0.#} 天" : "";
+        Updated = DisplayText.RelativeUpdate(snapshot?.FetchedAt, DateTimeOffset.UtcNow);
+        var notes = config.Type == ProviderType.WgetCloud ? DisplayText.PlanDates(snapshot?.Message) : snapshot?.Message;
+        DetailMessage = config.Type == ProviderType.WgetCloud && snapshot?.Status == SnapshotStatus.Ok ? notes : null;
+        Message = DetailMessage is null ? notes : null;
+        Forecast = snapshot?.EstimatedDays is { } days ? $"约 {Math.Round(days, 0, MidpointRounding.AwayFromZero):0} 天 · 按近期消耗估算" : "";
         ResetCredits = snapshot?.AvailableResets is > 0 ? $"{snapshot.AvailableResets} 次可用额度重置 · 在 Codex 中操作" : "";
         if (snapshot is not null) Windows = snapshot.Windows.Select(w => new WindowViewModel(w, Accent)).ToList();
-        var points = history.Where(s => s.Status == SnapshotStatus.Ok && s.Remaining.HasValue && s.Currency == snapshot?.Currency && s.FetchedAt >= DateTimeOffset.UtcNow.AddDays(-7)).ToList();
-        if (points.Count >= 3 && snapshot?.Kind != QuotaKind.RateWindow)
+        var now = DateTimeOffset.UtcNow;
+        var points = history.Where(s => s.Status == SnapshotStatus.Ok && s.Remaining.HasValue && s.Currency == snapshot?.Currency
+            && s.FetchedAt >= now.AddDays(-7) && s.FetchedAt <= now).OrderBy(s => s.FetchedAt).DistinctBy(s => s.FetchedAt).ToList();
+        if (points.Count >= 3 && snapshot?.Kind != QuotaKind.RateWindow && points[^1].FetchedAt - points[0].FetchedAt >= TimeSpan.FromHours(1))
         {
-            if (points.Count > 60) points = points.Where((_, i) => i % (int)Math.Ceiling(points.Count / 60d) == 0).Append(points[^1]).ToList();
-            var min = points.Min(p => p.Remaining!.Value);
-            var range = Math.Max(0.01m, points.Max(p => p.Remaining!.Value) - min);
-            for (var i = 0; i < points.Count; i++) Trend.Add(new(2 + 282d * i / (points.Count - 1), 32 - (double)((points[i].Remaining!.Value - min) / range) * 28));
+            var first = points[0]; var last = points[^1];
+            var delta = last.Remaining!.Value - first.Remaining!.Value;
+            TrendSummary = "近 7 天记录变化 " + (delta < 0 ? "−" : "+") + Money(Math.Abs(delta), snapshot?.Currency);
+            // Include zero: tiny balance changes must not appear as full-height swings.
+            var min = Math.Min(0, points.Min(p => p.Remaining!.Value));
+            var max = Math.Max(0, points.Max(p => p.Remaining!.Value));
+            var range = Math.Max(0.01m, max - min);
+            TrendScale = $"刻度 {Money(min, snapshot?.Currency)} – {Money(max, snapshot?.Currency)}";
+            if (points.Count > 60) points = points.Where((_, i) => i % (int)Math.Ceiling(points.Count / 59d) == 0).Append(last).DistinctBy(p => p.FetchedAt).ToList();
+            foreach (var point in points)
+            {
+                var x = 8 + 270 * (point.FetchedAt!.Value - first.FetchedAt!.Value).TotalSeconds / (last.FetchedAt!.Value - first.FetchedAt!.Value).TotalSeconds;
+                var y = 42 - (double)((point.Remaining!.Value - min) / range) * 34;
+                Trend.Add(new(x, y));
+                TrendPoints.Add(new(x - 6, y - 6, point.FetchedAt.Value.ToLocalTime().ToString("yyyy年M月d日 HH:mm") + " · " + Money(point.Remaining, point.Currency)));
+            }
         }
     }
 
@@ -74,6 +98,8 @@ public sealed class CardViewModel
     private static Brush Brush(string color) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color)); brush.Freeze(); return brush; }
 }
 
+public sealed record TrendPoint(double Left, double Top, string Label);
+
 public sealed class WindowViewModel(RateWindow window, Brush accent)
 {
     public string Name => window.Name;
@@ -81,6 +107,6 @@ public sealed class WindowViewModel(RateWindow window, Brush accent)
     public double Percentage => (double)window.RemainingPercent;
     public Brush Accent => accent;
     public string Reset => window.ResetsAt is { } date ? date > DateTimeOffset.UtcNow
-        ? date.ToLocalTime().ToString("MM/dd HH:mm") + " 重置"
+        ? DisplayText.LocalDate(date, DateTimeOffset.UtcNow) + " 重置"
         : "重置时间已到，等待刷新" : "平台未提供重置时间";
 }

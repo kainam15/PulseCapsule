@@ -213,7 +213,8 @@ try:
     stable('expanded card wheel leaves capsule selection unchanged', 'Codex')
 
     settings = open_settings()
-    settings.child_window(auto_id='SavePreferencesButton').invoke()
+    settings.child_window(auto_id='DesktopNav').select()
+    settings.child_window(auto_id='NotifyCheck').toggle()
     close_settings(settings)
     collapse_panel(main)
     stable('settings apply preserves selected provider by ID', 'Codex')
@@ -232,8 +233,8 @@ try:
     cycle('remaining provider order stays stable', 120, '钱包 A')
 
     settings = open_settings()
+    settings.child_window(auto_id='DesktopNav').select()
     settings.child_window(auto_id='TaskbarDockCheck').toggle()
-    settings.child_window(auto_id='SavePreferencesButton').invoke()
     wait_until(15, .1, lambda: bool(capsule_handle()))
     close_settings(settings)
     embedded = True

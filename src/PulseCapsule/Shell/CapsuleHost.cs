@@ -23,6 +23,7 @@ public sealed class CapsuleHost : IDisposable
     public void Notify(string title, string message) => Notification?.Invoke(title, message);
     public async Task Configure(AppSettings value, List<ICapsule> items)
     {
+        var existing = capsules.ToHashSet();
         settings = value;
         var id = Current?.Id ?? settings.LastCapsuleId;
         foreach (var old in capsules)
@@ -45,8 +46,18 @@ public sealed class CapsuleHost : IDisposable
         OnChanged();
         foreach (var capsule in capsules.ToArray())
         {
-            if (paused) capsule.Pause(); else await Guard(capsule, capsule.Initialize);
+            if (!capsules.Contains(capsule)) continue;
+            if (paused) capsule.Pause(); else if (!existing.Contains(capsule)) await Guard(capsule, capsule.Initialize);
         }
+    }
+    public void SelectFamily(string family)
+    {
+        var currentFamily = Current?.Id.Split(':')[0];
+        if (currentFamily == family) return;
+        var target = capsules.FirstOrDefault(c => c.Id.Split(':')[0] == family);
+        if (target is null) return;
+        Current = target; settings.LastCapsuleId = target.Id;
+        remember(); OnChanged();
     }
     public void Cycle(int steps)
     {

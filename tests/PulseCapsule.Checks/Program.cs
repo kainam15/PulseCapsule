@@ -8,6 +8,7 @@ using PulseCapsule.Services;
 using PulseCapsule.UI;
 
 if (args.Contains("--system-probe")) { await HardwareProbe.Run(args); return; }
+if (args.Contains("--ui-checks")) { SettingsUiChecks.Run(); return; }
 
 var passed = 0;
 void Check(string name, bool condition) { if (!condition) throw new Exception("FAIL: " + name); passed++; Console.WriteLine("PASS " + name); }
@@ -382,6 +383,7 @@ if (args.Contains("--live-codex"))
     foreach (var window in actual.Windows) Console.WriteLine($"  {window.Name}: {window.RemainingPercent}% remaining; resets {window.ResetsAt:O}");
 }
 CapsuleChecks.Run(Check);
+PresentationChecks.Run(Check);
 Console.WriteLine($"{passed} checks passed.");
 Console.WriteLine("Isolated data: " + directory);
 

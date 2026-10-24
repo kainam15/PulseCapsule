@@ -78,6 +78,38 @@ public partial class App : Application
         if (existing is not null) { existing.Activate(); return; }
         new SettingsWindow(this) { Owner = MainWindow }.Show();
     }
+    public void OpenProviderSettings(string id)
+    {
+        OpenSettings();
+        Windows.OfType<SettingsWindow>().First().SelectProvider(id);
+    }
+    public void DisableProvider(string id)
+    {
+        // Resolve an existing editor before changing the configuration beneath it.
+        var editor = Windows.OfType<SettingsWindow>().FirstOrDefault();
+        if (editor is not null && !editor.SelectProvider(id)) return;
+        SaveSettings(Settings with { Providers = Settings.Providers.Select(p => p.Id == id ? p with { Enabled = false } : p).ToList() });
+        editor?.SelectProvider(id);
+    }
+    public void SetCardDetails(string id, bool expanded)
+    {
+        var states = new Dictionary<string, bool>(Settings.CardDetailsExpanded) { [id] = expanded };
+        Store.Save(Settings with { CardDetailsExpanded = states });
+        Settings.CardDetailsExpanded = states;
+    }
+    public void SavePreferences(AppSettings settings)
+    {
+        Action? restoreStartup = null;
+        try
+        {
+            if (settings.StartWithWindows != Settings.StartWithWindows)
+                restoreStartup = StartupRegistration.Change(settings.StartWithWindows);
+            Store.Save(settings);
+        }
+        catch { restoreStartup?.Invoke(); throw; }
+        Monitor.ApplyPreferences(settings);
+        _ = ConfigureCapsules();
+    }
     public void SaveSettings(AppSettings settings)
     {
         Store.Save(settings);
@@ -92,8 +124,10 @@ public partial class App : Application
         {
             switch (pref.Id)
             {
-                case "clock": items.Add(new ClockCapsule()); break;
-                case "quota": items.AddRange(Settings.Providers.Where(p => p.Enabled).Select(p => new QuotaCapsule(p, Monitor, OpenSettings))); break;
+                case "clock": items.Add(Host.Capsules.OfType<ClockCapsule>().FirstOrDefault() ?? new ClockCapsule()); break;
+                case "quota": items.AddRange(Settings.Providers.Where(p => p.Enabled).Select(p =>
+                    Host.Capsules.OfType<QuotaCapsule>().FirstOrDefault(c => c.Matches(p))
+                    ?? new QuotaCapsule(p, Monitor, OpenProviderSettings, DisableProvider, SetCardDetails))); break;
                 case "system":
                     try
                     {

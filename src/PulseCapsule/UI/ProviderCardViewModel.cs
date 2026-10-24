@@ -108,6 +108,7 @@ public sealed class ProviderCardViewModel
 
 public sealed class ServiceSectionViewModel
 {
+    public bool DetailsExpanded { get; set; }
     public CardViewModel Card { get; }
     public string Name { get; }
     public string AutomationId => "Service_" + Card.Config.Id;

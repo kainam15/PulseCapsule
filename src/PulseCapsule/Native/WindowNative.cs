@@ -45,6 +45,9 @@ public static class WindowNative
         }
     }
 
+    public static void ActivateForKeyboard(Window window)
+        => SetForegroundWindow(new WindowInteropHelper(window).Handle);
+
     public static bool FullscreenApp()
     {
         return SHQueryUserNotificationState(out var state) == 0 && state is 2 or 3 or 4;

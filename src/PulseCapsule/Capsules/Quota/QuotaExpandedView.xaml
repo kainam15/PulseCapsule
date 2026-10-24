@@ -3,39 +3,65 @@
           <ItemsControl x:Name="Cards">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Background="{StaticResource Panel}" CornerRadius="13" Padding="14,13" Margin="0,0,0,9" AutomationProperties.AutomationId="{Binding AutomationId}">
+                <Border Background="{StaticResource Panel}" CornerRadius="13" Padding="16" Margin="0,0,0,12" AutomationProperties.AutomationId="{Binding AutomationId}">
                   <StackPanel>
-                    <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                      <Grid Margin="0,0,8,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="27" Height="27" CornerRadius="8" Background="#283643" Margin="0,0,8,0"><TextBlock Text="{Binding Initial}" Foreground="{Binding Accent}" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Center"/></Border><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" AutomationProperties.AutomationId="ProviderName"/><TextBlock Text="{Binding Scope}" FontSize="9" Foreground="{StaticResource Muted}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/></StackPanel></Grid>
-                      <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontSize="10" VerticalAlignment="Center"/>
+                    <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                      <Grid Margin="0,0,8,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="27" Height="27" CornerRadius="8" Background="#283643" Margin="0,0,8,0"><TextBlock Text="{Binding Initial}" Foreground="{Binding Accent}" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Center"/></Border><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" AutomationProperties.AutomationId="ProviderName"/><TextBlock Text="{Binding Scope}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/></StackPanel></Grid>
+                      <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontSize="12" VerticalAlignment="Center"/>
                     </Grid>
                     <ItemsControl ItemsSource="{Binding Services}"><ItemsControl.ItemTemplate><DataTemplate>
                       <Border BorderBrush="{StaticResource Line}" BorderThickness="{Binding SeparatorThickness}" Padding="{Binding Padding}" Margin="{Binding Margin}" AutomationProperties.AutomationId="{Binding AutomationId}">
                         <StackPanel>
                           <Grid Visibility="{Binding HeaderVisibility}" Margin="0,0,0,5">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.Name}" Margin="0,0,8,0"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Card.StatusText}" Foreground="{Binding Card.StatusBrush}" FontSize="9" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.Name}" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Card.StatusText}" Foreground="{Binding Card.StatusBrush}" FontSize="11" VerticalAlignment="Center"/>
                           </Grid>
                           <StackPanel Visibility="{Binding Card.MoneyVisibility}">
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                               <TextBlock Text="{Binding Card.PrimaryValue}" FontSize="{Binding ValueFontSize}" FontWeight="SemiBold" FontFamily="Segoe UI Variable Display, Segoe UI"/>
-                              <TextBlock Grid.Column="1" Text="{Binding Card.PrimaryLabel}" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom" Margin="6,0,0,5"/>
+                              <TextBlock Grid.Column="1" Text="{Binding Card.PrimaryLabel}" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom" Margin="6,0,0,5"/>
                             </Grid>
                             <TextBlock Text="{Binding Card.SecondaryText}" Visibility="{Binding Card.SecondaryVisibility}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,4,0,2" TextWrapping="Wrap"/>
                           </StackPanel>
                           <ItemsControl ItemsSource="{Binding Card.Windows}"><ItemsControl.ItemTemplate><DataTemplate>
                             <StackPanel Margin="0,0,0,12">
-                              <Grid Margin="0,0,0,7"><TextBlock Text="{Binding Name}" FontSize="11"/><TextBlock Text="{Binding Remaining}" Foreground="{Binding Accent}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="12"/></Grid>
+                              <Grid Margin="0,0,0,8"><TextBlock Text="{Binding Name}" FontSize="13"/><TextBlock Text="{Binding Remaining}" Foreground="{Binding Accent}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="12"/></Grid>
                               <ProgressBar Value="{Binding Percentage, Mode=OneWay}" Foreground="{Binding Accent}"/>
-                              <TextBlock Text="{Binding Reset}" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,5,0,0"/>
+                              <TextBlock Text="{Binding Reset}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,5,0,0"/>
                             </StackPanel>
                           </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                          <StackPanel Visibility="{Binding Card.TrendVisibility}" Margin="0,7,0,5"><Viewbox Stretch="Fill" Height="34"><Polyline Width="286" Height="36" Points="{Binding Card.Trend}" Stroke="{Binding Card.Accent}" StrokeThickness="1.7" StrokeLineJoin="Round"/></Viewbox><TextBlock Text="{Binding Card.TrendLabel}" FontSize="9" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/></StackPanel>
-                          <StackPanel Visibility="{Binding Card.ForecastVisibility}" Margin="0,5,0,7"><TextBlock Text="{Binding Card.Forecast}" Visibility="{Binding Card.ForecastTextVisibility}" Foreground="{Binding Card.Accent}" FontSize="10"/><TextBlock Text="{Binding Card.ResetCredits}" Visibility="{Binding Card.ResetsVisibility}" Foreground="{StaticResource Muted}" FontSize="10"/></StackPanel>
-                          <TextBlock Text="{Binding Message}" Visibility="{Binding MessageVisibility}" TextWrapping="Wrap" FontSize="10" Foreground="{StaticResource Muted}" Margin="0,5,0,7"/>
+                          <TextBlock Text="{Binding Card.ResetCredits}" Visibility="{Binding Card.ResetsVisibility}" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                          <Expander Header="详情" Visibility="{Binding Card.DetailsVisibility}" IsExpanded="{Binding DetailsExpanded, Mode=TwoWay}" Expanded="Details_Changed" Collapsed="Details_Changed" Margin="0,8">
+                            <StackPanel>
+                              <StackPanel Visibility="{Binding Card.TrendVisibility}">
+                                <TextBlock Text="{Binding Card.TrendSummary}" FontSize="12" TextWrapping="Wrap"/>
+                                <Viewbox Stretch="Uniform" HorizontalAlignment="Stretch" Margin="0,8">
+                                  <Grid Width="286" Height="50">
+                                    <Polyline Points="{Binding Card.Trend}" Stroke="{Binding Card.Accent}" StrokeThickness="1.7" StrokeLineJoin="Round" IsHitTestVisible="False"/>
+                                    <ItemsControl ItemsSource="{Binding Card.TrendPoints}">
+                                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                      <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter"><Setter Property="Canvas.Left" Value="{Binding Left}"/><Setter Property="Canvas.Top" Value="{Binding Top}"/></Style></ItemsControl.ItemContainerStyle>
+                                      <ItemsControl.ItemTemplate><DataTemplate><Border Width="12" Height="12" Background="Transparent" ToolTip="{Binding Label}" AutomationProperties.Name="{Binding Label}"><Ellipse Width="4" Height="4" Fill="{StaticResource Mint}"/></Border></DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                  </Grid>
+                                </Viewbox>
+                                <TextBlock Text="{Binding Card.TrendScale}" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Card.TrendLabel}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,4,0,8"/>
+                              </StackPanel>
+                              <TextBlock Text="{Binding Card.Forecast}" Visibility="{Binding Card.ForecastTextVisibility}" Foreground="{Binding Card.Accent}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                              <TextBlock Text="{Binding Card.DetailMessage}" Visibility="{Binding Card.DetailMessageVisibility}" Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"/>
+                            </StackPanel>
+                          </Expander>
+                          <TextBlock Text="{Binding Message}" Visibility="{Binding MessageVisibility}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,5,0,7"/>
                           <Button Content="连接账户" Visibility="{Binding Card.SetupVisibility}" Background="#2D4453" Margin="0,0,0,8" Padding="8,7" HorizontalAlignment="Left" Click="Settings_Click" AutomationProperties.Name="连接账户"/>
-                          <TextBlock Text="{Binding Card.Updated}" FontSize="9" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+                          <StackPanel Orientation="Horizontal" Visibility="{Binding Card.RetryVisibility}" Margin="0,8"><Button Content="重试" Click="Retry_Click" Margin="0,0,8,0"/><Button Content="打开设置" Click="Settings_Click"/></StackPanel>
+                          <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Card.Updated}" ToolTip="{Binding Card.UpdatedExact}" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="···" Padding="8,4" Background="Transparent" Click="Menu_Click" ToolTip="数据源操作" AutomationProperties.Name="{Binding Name, StringFormat={}{0}的数据源操作}">
+                              <Button.ContextMenu><ContextMenu Opened="Menu_Opened"><MenuItem Header="刷新此项" Click="Retry_Click"/><MenuItem Header="修改连接" Click="Settings_Click"/><Separator/><MenuItem Header="停用此项" Click="Disable_Click"/></ContextMenu></Button.ContextMenu>
+                            </Button>
+                          </Grid>
                         </StackPanel>
                       </Border>
                     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
@@ -44,6 +70,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+        <TextBlock x:Name="ActionStatus" TextWrapping="Wrap" Foreground="{StaticResource Warning}" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
         <TextBlock x:Name="EmptyText" Text="还没有启用的数据源，在设置中添加一个。" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,10"/>
   </StackPanel>
 </UserControl>

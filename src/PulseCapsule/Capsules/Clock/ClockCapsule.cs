@@ -7,7 +7,7 @@ public sealed class ClockCapsule : CapsuleBase
 {
     private readonly TextBlock detail = new() { FontSize = 28, TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 25, 0, 30) };
     public override string Id => "clock";
-    public override string Title => "Clock";
+    public override string Title => "时间";
     public override CapsuleAppearance Appearance => new(true, false, 15, 14);
     public override string Footer => "本机时间 · 不显示秒";
     public ClockCapsule() : base(TimeSpan.FromSeconds(1)) => ExpandedContent = detail;
