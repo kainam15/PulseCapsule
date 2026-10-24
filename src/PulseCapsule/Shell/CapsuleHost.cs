@@ -38,7 +38,7 @@ public sealed class CapsuleHost : IDisposable
             subscriptions[capsule] = subscription;
             capsule.Changed += subscription;
         }
-        Current = capsules.FirstOrDefault(c => c.Id == id) ?? capsules.FirstOrDefault();
+        Current = capsules.FirstOrDefault(c => c.Id == id) ?? capsules.FirstOrDefault(c => c.Id == settings.LastCapsuleId) ?? capsules.FirstOrDefault();
         if (settings.LastCapsuleId != Current?.Id) { settings.LastCapsuleId = Current?.Id; remember(); }
         carousel.Stop();
         carousel.Interval = TimeSpan.FromSeconds(Math.Clamp(settings.CarouselSeconds, 5, 3600));

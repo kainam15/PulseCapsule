@@ -11,6 +11,7 @@ namespace PulseCapsule;
 public partial class SettingsWindow : Window
 {
     private readonly App app;
+    private readonly CapsuleListReorder moduleReorder;
     private AppSettings working;
     private ProviderConfig? selected;
     private bool loadingProvider;
@@ -23,7 +24,7 @@ public partial class SettingsWindow : Window
     private readonly HashSet<string> drafts = [];
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? connectionTest;
-    private static readonly (ProviderType Type, string Name)[] Types = [(ProviderType.Hone, "Hone API"), (ProviderType.HoneWallet, "Hone 钱包"), (ProviderType.Codex, "Codex"),
+    private static readonly (ProviderType Type, string Name)[] Types = [(ProviderType.HoneWallet, "Hone"), (ProviderType.Codex, "Codex"),
         (ProviderType.DeepSeek, "DeepSeek"), (ProviderType.Kimi, "Kimi"), (ProviderType.SiliconFlow, "硅基流动"),
         (ProviderType.OpenRouter, "OpenRouter"), (ProviderType.WgetCloud, "WgetCloud 流量"),
         (ProviderType.Relay, "New API 中转站"), (ProviderType.Custom, "自定义 HTTP"), (ProviderType.Manual, "手动录入")];
@@ -32,6 +33,7 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         this.app = app;
         working = Clone(app.Monitor.Settings);
+        moduleReorder = new CapsuleListReorder(ModuleList, ModuleDropIndicator, (item, index) => ReorderModule(((CapsuleModule)item).Id, index));
         AddType.ItemsSource = Types.Select(t => t.Name); AddType.SelectedIndex = 0;
         LoadPreferences();
         ReloadList(working.Providers.FirstOrDefault()?.Id);
@@ -40,8 +42,6 @@ public partial class SettingsWindow : Window
         Editor.AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is CheckBox) MarkFormDirty(); }), true);
         Editor.AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, e) => { if (e.OriginalSource is CheckBox) MarkFormDirty(); }), true);
         Editor.AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler((_, _) => MarkFormDirty()), true);
-        EnabledCheck.Checked += (_, _) => MarkFormDirty();
-        EnabledCheck.Unchecked += (_, _) => MarkFormDirty();
         Closing += (_, e) => { if (!ResolvePendingChanges()) e.Cancel = true; };
         Closed += (_, _) => { InvalidateConnectionTest(); lifetime.Cancel(); lifetime.Dispose(); };
     }
@@ -51,9 +51,11 @@ public partial class SettingsWindow : Window
         changingProvider = true;
         try
         {
-            ProviderList.ItemsSource = null; ProviderList.ItemsSource = working.Providers;
-            var provider = working.Providers.FirstOrDefault(p => p.Id == id) ?? working.Providers.FirstOrDefault();
-            ProviderList.SelectedItem = provider;
+            var items = SourceItems();
+            ProviderList.ItemsSource = items;
+            var item = items.FirstOrDefault(p => p.Providers.Any(s => s.Id == id)) ?? items.FirstOrDefault();
+            var provider = item?.Providers[0];
+            ProviderList.SelectedItem = item;
             Editor.IsEnabled = provider is not null;
             Actions.IsEnabled = Editor.IsEnabled;
             LoadProvider(provider);
@@ -62,15 +64,15 @@ public partial class SettingsWindow : Window
     }
     private void Provider_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (changingProvider || ProviderList.SelectedItem is not ProviderConfig next || ReferenceEquals(selected, next)) return;
+        if (changingProvider || ProviderList.SelectedItem is not SourceItem next || next.Providers.Any(p => p.Id == selected?.Id)) return;
         if (!ResolvePendingChanges())
         {
             changingProvider = true;
-            try { ProviderList.SelectedItem = selected; }
+            try { ProviderList.SelectedItem = ProviderList.Items.Cast<SourceItem>().FirstOrDefault(p => p.Providers.Any(s => s.Id == selected?.Id)); }
             finally { changingProvider = false; }
             return;
         }
-        ReloadList(next.Id);
+        ReloadList(next.Providers[0].Id);
     }
     private void LoadProvider(ProviderConfig? p)
     {
@@ -78,14 +80,18 @@ public partial class SettingsWindow : Window
         selected = p;
         ConnectionFeedback.Text = "";
         ClearValidation();
-        if (p is null) { TypeTitle.Text = "请选择数据源"; Editor.Visibility = Visibility.Collapsed; EnabledCheck.IsEnabled = false; ClearFormDirty(); return; }
-        Editor.Visibility = Visibility.Visible; EnabledCheck.IsEnabled = true;
+        if (p is null) { TypeTitle.Text = "请选择数据源"; Editor.Visibility = Visibility.Collapsed; ClearFormDirty(); return; }
+        Editor.Visibility = Visibility.Visible;
         loadingProvider = true;
         try
         {
         KeyInput.Clear();
+        HoneConnections.Children.Clear();
+        HoneFields.Visibility = IsHone ? Visibility.Visible : Visibility.Collapsed;
+        StandardFields.Visibility = IsHone ? Visibility.Collapsed : Visibility.Visible;
+        if (IsHone) { LoadHone(); EditorScroll.ScrollToTop(); return; }
         TypeTitle.Text = Types.First(t => t.Type == p.Type).Name;
-        NameInput.Text = p.Name; EnabledCheck.IsChecked = p.Enabled;
+        NameInput.Text = p.Name;
         BaseUrlInput.Text = p.Type == ProviderType.Custom ? p.Http.Url : p.BaseUrl;
         EnvironmentInput.Text = p.SecretEnvironment; CodexPathInput.Text = p.CodexExecutable;
         IntervalInput.Text = p.RefreshMinutes.ToString(); ThresholdInput.Text = p.LowThreshold.ToString(CultureInfo.InvariantCulture);
@@ -108,14 +114,12 @@ public partial class SettingsWindow : Window
         WgetCloudBytesCheck.IsChecked = p.WgetCloudValuesAreBytes;
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
         KeyLabel.Text = p.Type switch { ProviderType.HoneWallet => "账户访问令牌", ProviderType.WgetCloud => "用户中心会话 Cookie（可不填）", _ => "API key" };
-        HoneWalletFields.Visibility = p.Type == ProviderType.HoneWallet ? Visibility.Visible : Visibility.Collapsed;
         WgetCloudFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Visible : Visibility.Collapsed;
         var browserLinked = p.Type == ProviderType.WgetCloud && p.WgetCloudUseBrowserSession;
         KeyLabel.Visibility = KeyInput.Visibility = KeyHint.Visibility = browserLinked ? Visibility.Collapsed : Visibility.Visible;
         EnvironmentLabel.Visibility = EnvironmentInput.Visibility = browserLinked ? Visibility.Collapsed : Visibility.Visible;
         ApiFields.Visibility = p.NeedsSecret ? Visibility.Visible : Visibility.Collapsed;
         EndpointFields.Visibility = p.Type == ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
-        ConnectWalletFields.Visibility = p.Type == ProviderType.Hone ? Visibility.Visible : Visibility.Collapsed;
         DeleteKeyButton.Visibility = p.NeedsSecret && !browserLinked ? Visibility.Visible : Visibility.Collapsed;
         CodexFields.Visibility = p.Type == ProviderType.Codex ? Visibility.Visible : Visibility.Collapsed;
         CurrencyFields.Visibility = p.Type is ProviderType.Codex or ProviderType.WgetCloud ? Visibility.Collapsed : Visibility.Visible;
@@ -166,7 +170,7 @@ public partial class SettingsWindow : Window
         var config = selected with { Http = selected.Http with { } };
         config.Name = NameInput.Text.Trim();
         if (config.Name.Length == 0) throw Invalid(NameInput, "请填写显示名称。");
-        config.Enabled = EnabledCheck.IsChecked == true;
+        config.Enabled = app.Settings.Providers.FirstOrDefault(p => p.Id == config.Id)?.Enabled ?? config.Enabled;
         if (!int.TryParse(IntervalInput.Text, out var interval) || interval < 1 || interval > 1440) throw Invalid(IntervalInput, "刷新间隔须在 1–1440 分钟之间。");
         config.RefreshMinutes = interval;
         if (config.Type == ProviderType.WgetCloud && interval < 60)
@@ -259,26 +263,6 @@ public partial class SettingsWindow : Window
         drafts.Add(config.Id);
         working.Providers.Add(config); ReloadList(config.Id); MarkFormDirty(); StatusText.Text = "填写信息后点击保存账户。";
     }
-    private void ConnectWallet_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var baseUrl = BaseUrlInput.Text.Trim();
-            HttpQuotaProvider.ValidateUrl(baseUrl);
-            var existing = working.Providers.FirstOrDefault(p => p.Type == ProviderType.HoneWallet && p.BaseUrl == baseUrl);
-            if (!ResolvePendingChanges()) return;
-            if (existing is not null) { ReloadList(existing.Id); return; }
-            var wallet = ProviderConfig.Create(ProviderType.HoneWallet) with { BaseUrl = baseUrl };
-            drafts.Add(wallet.Id); working.Providers.Insert(0, wallet); ReloadList(wallet.Id); MarkFormDirty();
-            StatusText.Text = "填写 Hone 账户访问令牌后测试并保存。现有 API key 单独保留。";
-        }
-        catch (Exception error) { ShowError(error); }
-    }
-    private void WalletWebsite_Click(object sender, RoutedEventArgs e)
-    {
-        try { App.OpenWebsite(HttpQuotaProvider.Endpoint(ReadForm().BaseUrl, "/security")); }
-        catch (Exception error) { ShowError(error); }
-    }
     private async void WgetCloudLogin_Click(object sender, RoutedEventArgs e)
     {
         InvalidateConnectionTest();
@@ -362,6 +346,7 @@ public partial class SettingsWindow : Window
         ConnectionFeedback.Text = "正在测试当前表单的连接…";
         try
         {
+            if (IsHone) { await TestHoneConnectionsAsync(fetch, request.Token, IsCurrent); return; }
             var config = ReadForm();
             var key = KeyInput.Password.Length > 0 ? KeyInput.Password.Trim() : app.Credentials.Read(config.Id);
             key ??= string.IsNullOrEmpty(config.SecretEnvironment) ? null : Environment.GetEnvironmentVariable(config.SecretEnvironment);
@@ -400,6 +385,7 @@ public partial class SettingsWindow : Window
         InvalidateConnectionTest();
         try
         {
+            if (IsHone) return SaveHone();
             var config = ReadForm(); var old = selected!;
             var newKey = config.Type == ProviderType.WgetCloud && config.WgetCloudUseBrowserSession
                 ? "" : KeyInput.Password.Trim();
@@ -469,7 +455,6 @@ public partial class SettingsWindow : Window
         }
         finally { changingPage = false; }
     }
-    private sealed record CapsuleItem(string Id, string Name, bool Enabled);
     private void LoadPreferences(string? selectedId = null)
     {
         loadingPreferences = true;
@@ -483,12 +468,9 @@ public partial class SettingsWindow : Window
             RotateCheck.IsChecked = settings.AutoRotate;
             RotateSeconds.ItemsSource = new[] { 5, 15, 30, 60, 300, 900, 3600, settings.CarouselSeconds }.Distinct().Order().ToList();
             RotateSeconds.SelectedItem = settings.CarouselSeconds;
-            TemperatureCheck.IsChecked = settings.System.Temperature;
-            FanRpmCheck.IsChecked = settings.System.FanRpm;
-            FanControlCheck.IsChecked = settings.System.FanControl;
-            var items = settings.Capsules.Select(p => new CapsuleItem(p.Id, p.Id switch { "clock" => "时间", "quota" => "额度", _ => "系统" }, p.Enabled)).ToList();
-            CapsuleList.ItemsSource = items;
-            CapsuleList.SelectedItem = items.FirstOrDefault(p => p.Id == selectedId) ?? items.First();
+            var items = CapsuleSelection.Modules(settings);
+            ModuleList.ItemsSource = items;
+            ModuleList.SelectedItem = items.FirstOrDefault(p => p.Id == selectedId);
         }
         finally { loadingPreferences = false; }
     }
@@ -496,7 +478,6 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            if (!settings.Capsules.Any(p => p.Enabled)) throw new ProviderException("至少启用一个胶囊；本次更改未保存。");
             app.SavePreferences(settings);
             StatusText.Text = "已保存 · 全局偏好已生效。";
         }
@@ -509,33 +490,44 @@ public partial class SettingsWindow : Window
         SavePreferences(app.Settings with {
             Notifications = NotifyCheck.IsChecked == true, AutoHideFullscreen = FullscreenCheck.IsChecked == true,
             TaskbarDocked = TaskbarDockCheck.IsChecked == true, StartWithWindows = StartupCheck.IsChecked == true,
-            AutoRotate = RotateCheck.IsChecked == true,
-            System = new() { Temperature = TemperatureCheck.IsChecked == true, FanRpm = FanRpmCheck.IsChecked == true, FanControl = FanControlCheck.IsChecked == true }
-        }, (CapsuleList.SelectedItem as CapsuleItem)?.Id);
+            AutoRotate = RotateCheck.IsChecked == true
+        }, (ModuleList.SelectedItem as CapsuleModule)?.Id);
     }
     private void Rotation_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!loadingPreferences && RotateSeconds.SelectedItem is int seconds)
             SavePreferences(app.Settings with { CarouselSeconds = seconds });
     }
-    private void CapsuleEnabled_Click(object sender, RoutedEventArgs e)
+    private void ReorderModule(string id, int targetIndex)
     {
-        if (loadingPreferences) return;
-        var check = (CheckBox)sender;
-        var id = (string)check.Tag;
-        if (app.Settings.Capsules.First(p => p.Id == id).Enabled == (check.IsChecked == true)) return;
-        SavePreferences(app.Settings with { Capsules = app.Settings.Capsules.Select(p => p.Id == id ? p with { Enabled = check.IsChecked == true } : p with { }).ToList() }, id);
-    }
-    private void MoveCapsule(int delta)
-    {
-        var index = CapsuleList.SelectedIndex;
         var items = app.Settings.Capsules.Select(p => p with { }).ToList();
-        if (index < 0 || index + delta < 0 || index + delta >= items.Count) return;
-        var item = items[index]; items.RemoveAt(index); items.Insert(index + delta, item);
+        var index = items.FindIndex(p => p.Id == id);
+        if (index < 0 || targetIndex < 0 || targetIndex >= items.Count || index == targetIndex) return;
+        var item = items[index]; items.RemoveAt(index); items.Insert(targetIndex, item);
         SavePreferences(app.Settings with { Capsules = items }, item.Id);
     }
-    private void Up_Click(object sender, RoutedEventArgs e) => MoveCapsule(-1);
-    private void Down_Click(object sender, RoutedEventArgs e) => MoveCapsule(1);
+    private void ModuleEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (loadingPreferences || sender is not CheckBox { Tag: CapsuleModule module } check) return;
+        var enabled = check.IsChecked == true;
+        // Binding can raise Checked after LoadPreferences finishes. A mixed group must
+        // not silently enable its disabled members merely because it renders as enabled.
+        if (module.Enabled == enabled) return;
+        var ids = module.Providers.Select(p => p.Id).ToHashSet();
+        try
+        {
+            var next = app.Settings with {
+                Providers = app.Settings.Providers.Select(p => ids.Contains(p.Id) ? p with { Enabled = enabled } : p).ToList(),
+                Capsules = app.Settings.Capsules.Select(p => p.Id == module.Id ? p with { Enabled = enabled } : p).ToList()
+            };
+            if (!next.Capsules.Any(p => p.Id is "clock" or "system" && p.Enabled) && !next.Providers.Any(p => p.Enabled))
+                throw new ProviderException("至少启用一个模块；本次更改未保存。");
+            if (ids.Count > 0) app.SaveSettings(next); else app.SavePreferences(next);
+            StatusText.Text = $"已保存 · {module.Name} 已{(enabled ? "启用" : "停用")}。";
+        }
+        catch (Exception error) { ShowError(error); StatusText.Text += " 更改未保存，已恢复原值。"; }
+        finally { LoadPreferences(module.Id); }
+    }
     private ProviderException Invalid(Control field, string message)
     {
         invalidFields.Add(field);
@@ -571,6 +563,7 @@ public partial class SettingsWindow : Window
     private void Remove_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
+        if (IsHone) { RemoveHone(); return; }
         var old = selected;
         var answer = MessageBox.Show(this,
             $"确定移除数据源「{old.Name}」？\n\n此操作会移除账户配置及保存的凭据，未保存的表单修改也将丢失。历史记录将保留至正常过期。此操作不能撤销。",

@@ -87,7 +87,7 @@ public sealed record ProviderConfig
 
 public sealed record AppSettings
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public List<ProviderConfig> Providers { get; set; } = [ProviderConfig.Create(ProviderType.Hone), ProviderConfig.Create(ProviderType.Codex)];
     public bool Notifications { get; set; } = true;
     public bool AutoHideFullscreen { get; set; } = true;
@@ -96,7 +96,7 @@ public sealed record AppSettings
     public double? TopPixels { get; set; }
     public bool StartExpanded { get; set; } = true;
     public bool TaskbarDocked { get; set; }
-    public List<CapsulePreference> Capsules { get; set; } = [new() { Id = "clock" }, new() { Id = "quota" }, new() { Id = "system" }];
+    public List<CapsulePreference> Capsules { get; set; } = [];
     public string? LastCapsuleId { get; set; }
     public bool AutoRotate { get; set; }
     public int CarouselSeconds { get; set; } = 15;

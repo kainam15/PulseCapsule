@@ -4,9 +4,11 @@
 
 `MainWindow` 只管理当前视图、鼠标滚轮、展开、拖动与任务栏 Dock。`ICapsule` 提供统一文字、状态、tooltip、展开内容、操作及生命周期。外壳按列表循环，不认识 Clock、Quota 或 System 的业务类型。
 
-`ClockCapsule` 每秒更新本机分钟显示。每个已启用 Provider 对应一个 `QuotaCapsule`，复用现有 `QuotaMonitor`、Credential Store、SQLite 和供应商分组卡片。Capsule 自己管理刷新；`CapsuleHost` 隔离生命周期异常、保存选择并管理轮播。
+`ClockCapsule` 每秒更新本机分钟显示。每个已启用供应商组对应一个 `QuotaCapsule`，复用现有 `QuotaMonitor`、Credential Store、SQLite 和供应商分组卡片。同站点的 Hone 钱包与 API 只占一个切换位置，金额、凭据和刷新仍由各数据源独立管理。Capsule 自己管理刷新；`CapsuleHost` 隔离生命周期异常、保存选择并管理轮播。
 
-设置 → **Capsules 与 System** 可以启停、上下排序、设置自动轮播及温度 / RPM / 风扇控制偏好。Provider 在 Quota 所在位置依原数据源顺序展开，新增 Capsule 无需修改滚轮算法。上次选中 ID 持久化到设置中；设置账户时保留 Capsule 页面刚保存的选择和偏好。
+设置 → **胶囊管理** 使用实际模块名称统一排序和启停。时钟、各供应商与硬件监控可以任意交错；滚轮和轮播直接使用该顺序，自动轮播控件位于列表底部。拖动只在列表内正常松手时保存，取消或持久化失败保留原顺序。此页移除系统监控子选项，但不改写已有 `SystemPreferences` 或开放硬件写入。上次选中 ID 持久化到设置中；设置账户时保留胶囊管理页刚保存的选择和偏好。
+
+`AppSettings.Version = 2` 在 `Capsules` 中保存 `clock`、`system` 与供应商模块 ID。模块使用钱包优先的数据源 ID 生成 `quota:<provider-id>`；同组其他 ID 在加载时归入该模块。v1 的 `quota` 位置展开为原顺序的供应商模块，旧总开关停用时迁移为各数据源停用；其他启用状态及上次选中来源保留或映射到所属模块。新增模块追加，已删除来源不产生空模块。`ProviderGroup` 的站点分组同时供设置与卡片使用；Provider ID、凭据标识、SQLite 历史不迁移或重建。
 
 参考：
 

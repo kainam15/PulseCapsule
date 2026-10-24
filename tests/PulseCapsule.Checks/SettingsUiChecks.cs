@@ -1,5 +1,6 @@
 using System.IO;
 using System.Reflection;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -31,7 +32,10 @@ static class SettingsUiChecks
         var app = new App(); app.InitializeComponent();
         var store = new SettingsStore(directory);
         var providers = Enumerable.Range(0, 14).Select(i => ProviderConfig.Create(ProviderType.Manual) with { Id = "ui-fixture-" + i, Name = "长名称账户 " + i + " ABCDEFGHIJKLMNOPQRSTUVWXYZ", ManualRemaining = 123 }).ToList();
-        var config = new AppSettings { Providers = providers, Capsules = [new() { Id = "clock" }, new() { Id = "quota", Enabled = false }, new() { Id = "system", Enabled = false }] };
+        var honeApi = ProviderConfig.Create(ProviderType.Hone) with { Id = "ui-hone-api", Enabled = false };
+        var honeWallet = ProviderConfig.Create(ProviderType.HoneWallet) with { Id = "ui-hone-wallet", BaseUrl = "https://HONE.vvvv.ee:443/v1/" };
+        providers.InsertRange(2, [honeApi, honeWallet]);
+        var config = CapsuleSelection.Normalize(new AppSettings { Providers = providers, Capsules = [new() { Id = "clock" }, new() { Id = "system", Enabled = false }] });
         store.Save(config);
         var history = new HistoryStore(directory);
         using var monitor = new QuotaMonitor(config, new CredentialStore("ui-checks-" + Guid.NewGuid().ToString("N")), history, true);
@@ -47,7 +51,8 @@ static class SettingsUiChecks
             if (Find<ButtonBase>(name) is RadioButton tab) tab.IsChecked = true;
             else Find<ButtonBase>(name).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         }
-        void Layout() { root.Measure(new Size(694, 502)); root.Arrange(new Rect(0, 0, 694, 502)); root.UpdateLayout(); }
+        double clientHeight = 502;
+        void Layout() { root.Measure(new Size(694, clientHeight)); root.Arrange(new Rect(0, 0, 694, clientHeight)); root.UpdateLayout(); }
         bool Inside(FrameworkElement element)
         {
             var point = element.TranslatePoint(new Point(), root);
@@ -55,11 +60,12 @@ static class SettingsUiChecks
         }
         void Render(string name, double scale = 1)
         {
-            Layout(); var bitmap = new RenderTargetBitmap((int)(694 * scale), (int)(502 * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            Layout(); var bitmap = new RenderTargetBitmap((int)(694 * scale), (int)(clientHeight * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
             bitmap.Render(root); var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
             using var file = File.Create(Path.Combine(directory, name + ".png")); png.Save(file);
         }
         Layout();
+        Check("source editor no longer contains an enable switch", window.FindName("EnabledCheck") is null);
         Check("minimum client area keeps all navigation and fixed actions reachable", new[] { "SourcesNav", "CapsuleSettingsButton", "DesktopNav", "AddButton", "SaveButton", "DiscardButton" }.All(n => Inside(Find<FrameworkElement>(n))));
         Check("account list scrolls independently of the form", Find<ListBox>("ProviderList").ActualHeight < 14 * 40 && Find<ScrollViewer>("EditorScroll").ScrollableHeight > 0);
         Render("sources-minimum"); Render("sources-minimum-200-render", 2);
@@ -81,16 +87,117 @@ static class SettingsUiChecks
         Click("SourcesNav");
         Find<TextBox>("NameInput").Text = "新账户名称"; Click("SaveButton");
         Check("saving an account preserves the latest global preference", store.Load().Providers[0].Name == "新账户名称" && !store.Load().Notifications);
-        Click("CapsuleSettingsButton"); Layout(); Render("capsules-minimum");
+        Click("CapsuleSettingsButton"); Layout(); Render("modules-minimum");
+        var list = Find<ListBox>("ModuleList");
+        Check("management uses named modules without family rows or removed controls", list.Items.Cast<CapsuleModule>().Any(m => m.Name == "Hone")
+            && list.Items.Cast<CapsuleModule>().Any(m => m.Name == "时钟") && list.Items.Cast<CapsuleModule>().Any(m => m.Name == "硬件监控")
+            && !list.Items.Cast<CapsuleModule>().Any(m => m.Id == "quota")
+            && new[] { "CapsuleProviders", "TemperatureCheck", "FanRpmCheck", "FanControlCheck" }.All(n => window.FindName(n) is null)
+            && !Descendants<Button>(Find<FrameworkElement>("CapsulesPage")).Any());
+        Check("rotation stays below the module list and inside minimum window", Inside(Find<FrameworkElement>("RotationSettings"))
+            && Find<FrameworkElement>("RotationSettings").TranslatePoint(new Point(), root).Y >= list.TranslatePoint(new Point(0, list.ActualHeight), root).Y);
+        var originalSystem = JsonSerializer.Serialize(store.Load().System);
         Find<ComboBox>("RotateSeconds").SelectedItem = 30;
-        Check("rotation interval is saved on selection", store.Load().CarouselSeconds == 30);
-        var list = Find<ListBox>("CapsuleList"); list.SelectedIndex = 2;
-        typeof(SettingsWindow).GetMethod("MoveCapsule", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [-1]);
-        Check("capsule reordering immediately persists", store.Load().Capsules[1].Id == "system");
-        Layout();
-        var only = Descendants<CheckBox>(list).First(c => (string)c.Content == "时间"); only.IsChecked = false;
-        only.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        Check("last enabled capsule cannot be turned off", store.Load().Capsules.Any(p => p.Enabled) && Find<TextBlock>("StatusText").Text.Contains("至少"));
+        Check("rotation saves without rewriting hidden hardware preferences", store.Load().CarouselSeconds == 30 && JsonSerializer.Serialize(store.Load().System) == originalSystem);
+        // Give all fixture rows layout space for deterministic routed drag checks.
+        clientHeight = 1400; Layout();
+        CheckBox ModuleSwitch(string id) => Descendants<CheckBox>(list).Single(c => c.Tag is CapsuleModule m && m.Id == id);
+        CheckBox SourceSwitch(string id) => Descendants<CheckBox>(list).Single(c => c.Tag is CapsuleModule m && m.Providers.Any(p => p.Id == id));
+        string[] Order() => store.Load().Capsules.Select(p => p.Id).ToArray();
+        Thumb StartDrag(int index)
+        {
+            Layout();
+            var row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(index);
+            var handle = Descendants<Thumb>(row).Single(t => Equals(t.Tag, "ReorderHandle"));
+            handle.RaiseEvent(new DragStartedEventArgs(handle.ActualWidth / 2, handle.ActualHeight / 2));
+            return handle;
+        }
+        void DragTo(Thumb handle, double y, double? x = null)
+        {
+            var origin = handle.TranslatePoint(new Point(handle.ActualWidth / 2, handle.ActualHeight / 2), list);
+            handle.RaiseEvent(new DragDeltaEventArgs((x ?? origin.X) - origin.X, y - origin.Y));
+        }
+        void FinishDrag(Thumb handle, bool canceled = false) => handle.RaiseEvent(new DragCompletedEventArgs(0, 0, canceled));
+        var originalOrder = Order();
+        var honeId = "quota:" + honeWallet.Id;
+        var grip = StartDrag(Array.IndexOf(originalOrder, honeId)); DragTo(grip, 3);
+        Check("module drag preview does not save an intermediate order", Order().SequenceEqual(originalOrder) && Find<Border>("ModuleDropIndicator").Visibility == Visibility.Visible);
+        FinishDrag(grip);
+        var honeFirst = new[] { honeId }.Concat(originalOrder.Where(id => id != honeId)).ToArray();
+        Check("supplier can move ahead of built-in modules without changing current selection", Order().SequenceEqual(honeFirst) && list.SelectedIndex == 0 && host.Current?.Id == "clock");
+        var snapshotBeforeMove = monitor.Snapshots[providers[0].Id];
+        grip = StartDrag(0); DragTo(grip, list.ActualHeight - 3); FinishDrag(grip);
+        var honeLast = originalOrder.Where(id => id != honeId).Append(honeId).ToArray();
+        Check("downward drop corrects insertion index and persists after reload", Order().SequenceEqual(honeLast) && list.SelectedIndex == list.Items.Count - 1);
+        Check("runtime module order matches settings and Hone appears once", host.Capsules.Select(c => c.Id).SequenceEqual(CapsuleSelection.Modules(store.Load()).Where(m => m.Enabled).Select(m => m.Id))
+            && host.Capsules.Count(c => c.Title == "Hone") == 1 && ReferenceEquals(snapshotBeforeMove, monitor.Snapshots[providers[0].Id]));
+        var cycleStart = host.Current!.Id;
+        var hostOrder = host.Capsules.Select(c => c.Id).ToArray();
+        host.Cycle(-1);
+        Check("wheel and carousel advance through the configured module order", host.Current!.Id == hostOrder[(Array.IndexOf(hostOrder, cycleStart) + 1) % hostOrder.Length]);
+        host.Cycle(1);
+        grip = StartDrag(list.Items.Count - 1); DragTo(grip, 3); FinishDrag(grip, true);
+        Check("canceled drag leaves module order intact", Order().SequenceEqual(honeLast));
+        grip = StartDrag(list.Items.Count - 1); DragTo(grip, 3); DragTo(grip, -20); FinishDrag(grip);
+        Check("release outside module list cancels its drop target", Order().SequenceEqual(honeLast) && Find<Border>("ModuleDropIndicator").Visibility == Visibility.Collapsed);
+        Directory.CreateDirectory(store.FilePath + ".tmp");
+        grip = StartDrag(0); FinishDrag(grip);
+        Check("handle click does not attempt to persist", Order().SequenceEqual(honeLast) && !Find<TextBlock>("StatusText").Text.Contains("已恢复原值"));
+        grip = StartDrag(list.Items.Count - 1); DragTo(grip, 3); FinishDrag(grip);
+        Check("failed module reorder restores displayed and stored order", Order().SequenceEqual(honeLast) && list.SelectedIndex == list.Items.Count - 1 && Find<TextBlock>("StatusText").Text.Contains("已恢复原值"));
+        Directory.Delete(store.FilePath + ".tmp");
+        grip = StartDrag(list.Items.Count - 1); DragTo(grip, 3); FinishDrag(grip); Layout();
+        Check("one enable switch is shown for every named module", Descendants<CheckBox>(list).Count() == providers.Count - 1 + 2);
+        SourceSwitch(providers[0].Id).IsChecked = false; Layout();
+        Check("module switch persists without editing connection values", !store.Load().Providers[0].Enabled && store.Load().Providers[0].ManualRemaining == 123 && store.Load().Providers[1].Enabled);
+        Directory.CreateDirectory(store.FilePath + ".tmp");
+        SourceSwitch(providers[0].Id).IsChecked = true; Layout();
+        Check("failed module enable restores its switch and stored state", !store.Load().Providers[0].Enabled && SourceSwitch(providers[0].Id).IsChecked == false);
+        Directory.Delete(store.FilePath + ".tmp");
+        Click("SourcesNav"); Find<TextBox>("NameInput").Text = "停用后修改名称"; Click("SaveButton");
+        Check("account saves preserve module enable and ordering", !store.Load().Providers[0].Enabled && store.Load().Capsules[0].Id == honeId);
+        Click("CapsuleSettingsButton"); Layout(); SourceSwitch(providers[0].Id).IsChecked = true; Layout();
+        var honeItem = list.Items.Cast<CapsuleModule>().Single(m => m.Name == "Hone");
+        var honeContainer = (FrameworkElement)list.ItemContainerGenerator.ContainerFromItem(honeItem);
+        Check("Hone remains one row and one switch for wallet and API", Descendants<CheckBox>(honeContainer).Count() == 1
+            && ReferenceEquals(SourceSwitch(honeWallet.Id), SourceSwitch(honeApi.Id))
+            && !Descendants<TextBlock>(honeContainer).Any(t => t.Text is "账户钱包" or "API key"));
+        Check("loading mixed Hone states does not enable the API source", SourceSwitch(honeWallet.Id).IsChecked == true && !store.Load().Providers.Single(p => p.Id == honeApi.Id).Enabled);
+        Directory.CreateDirectory(store.FilePath + ".tmp"); SourceSwitch(honeWallet.Id).IsChecked = false; Layout();
+        Check("failed supplier save restores the original mixed flags", SourceSwitch(honeWallet.Id).IsChecked == true
+            && !store.Load().Providers.Single(p => p.Id == honeApi.Id).Enabled && store.Load().Providers.Single(p => p.Id == honeWallet.Id).Enabled);
+        Directory.Delete(store.FilePath + ".tmp"); SourceSwitch(honeWallet.Id).IsChecked = false; Layout();
+        Check("disabling Hone disables all members and removes one runtime module", store.Load().Providers.Where(p => p.Id == honeApi.Id || p.Id == honeWallet.Id).All(p => !p.Enabled)
+            && host.Capsules.All(c => c.Id != honeId) && list.Items.Cast<CapsuleModule>().Any(m => m.Id == honeId));
+        var peer = new System.Windows.Automation.Peers.CheckBoxAutomationPeer(SourceSwitch(honeWallet.Id));
+        ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle)).Toggle(); Layout();
+        Check("UIA toggle reenables all Hone sources as one runtime module", store.Load().Providers.Where(p => p.Id == honeApi.Id || p.Id == honeWallet.Id).All(p => p.Enabled) && host.Capsules.Count(c => c.Id == honeId) == 1);
+        bool SourceUnchanged(ProviderConfig expected) => JsonSerializer.Serialize(store.Load().Providers.Single(p => p.Id == expected.Id)) == JsonSerializer.Serialize(expected);
+        Check("supplier toggles only change enabled flags", SourceUnchanged(honeApi with { Enabled = true }) && SourceUnchanged(honeWallet));
+        var beforeLastCheck = app.Settings;
+        app.SaveSettings(app.Settings with { Providers = app.Settings.Providers.Select(p => p with { Enabled = false }).ToList(), Capsules = app.Settings.Capsules.Select(p => p with { Enabled = p.Id == "clock" }).ToList() });
+        void ReloadModules() => typeof(SettingsWindow).GetMethod("LoadPreferences", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [null]);
+        ReloadModules(); Layout(); ModuleSwitch("clock").IsChecked = false; Layout();
+        Check("last enabled module cannot be turned off", ModuleSwitch("clock").IsChecked == true && Find<TextBlock>("StatusText").Text.Contains("至少") && host.Current?.Id == "clock");
+        app.SaveSettings(beforeLastCheck); ReloadModules();
+        clientHeight = 502; Layout();
+        var moduleScroll = Descendants<ScrollViewer>(list).First();
+        moduleScroll.ScrollToTop(); Layout();
+        var reorder = typeof(SettingsWindow).GetField("moduleReorder", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+        void ScrollAtEdge() => reorder.GetType().GetMethod("ScrollAtEdge", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(reorder, null);
+        var orderBeforeScroll = Order();
+        grip = StartDrag(0); DragTo(grip, list.ActualHeight - 3); ScrollAtEdge();
+        Check("long module list scrolls at drag edge without saving", moduleScroll.VerticalOffset > 0 && Order().SequenceEqual(orderBeforeScroll));
+        grip.RaiseEvent(new DragDeltaEventArgs(0, 0));
+        var offsetAfterScroll = moduleScroll.VerticalOffset; ScrollAtEdge();
+        Check("returning to drag origin stops edge scrolling", moduleScroll.VerticalOffset == offsetAfterScroll && Find<Border>("ModuleDropIndicator").Visibility == Visibility.Collapsed);
+        FinishDrag(grip, true); moduleScroll.ScrollToTop();
+        Render("modules-final-minimum"); Render("modules-final-200-render", 2);
+        var renderSettings = app.Settings;
+        app.SaveSettings(CapsuleSelection.Normalize(new AppSettings { Providers = [honeWallet, honeApi,
+            ProviderConfig.Create(ProviderType.Codex), ProviderConfig.Create(ProviderType.WgetCloud) with { Name = "WgetCloud" }] }));
+        ReloadModules(); clientHeight = 682; Render("modules-standard"); Render("modules-standard-200-render", 2);
+        app.SaveSettings(renderSettings); ReloadModules(); clientHeight = 502;
         var view = new QuotaExpandedView(_ => { }, _ => Task.CompletedTask, _ => { }, id => app.Settings.CardDetailsExpanded.GetValueOrDefault(id), app.SetCardDetails)
             { Foreground = (Brush)app.Resources["Text"] };
         var now = DateTimeOffset.UtcNow;
@@ -122,6 +229,7 @@ static class SettingsUiChecks
         }
         var bitmap = new RenderTargetBitmap(318, (int)Math.Ceiling(cardRoot.ActualHeight), 96, 96, PixelFormats.Pbgra32); bitmap.Render(cardRoot);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using (var file = File.Create(Path.Combine(directory, "cards-expanded.png"))) encoder.Save(file);
+        HoneSettingsChecks.Run(app, Check, directory);
         SettingsConnectionChecks.Run(app, history, Check);
         window.Close();
         Console.WriteLine($"{checks} WPF checks passed. Artifacts: {directory}");

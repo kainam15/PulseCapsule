@@ -133,11 +133,10 @@ static class SettingsConnectionChecks
             check("editing an already dirty form invalidates its pending result", dirty.Token.IsCancellationRequested && State() == changed && State().Feedback.Contains("已修改"));
             Click("DiscardButton");
 
-            foreach (var field in new[] { "key", "enabled", "name" })
+            foreach (var field in new[] { "key", "name" })
             {
                 var pending = Begin();
                 if (field == "key") Find<PasswordBox>("KeyInput").Password = "test-only-not-a-real-key";
-                else if (field == "enabled") Find<CheckBox>("EnabledCheck").IsChecked = false;
                 else Find<TextBox>("NameInput").Text += " changed";
                 changed = State();
                 pending.Succeed();
@@ -145,6 +144,14 @@ static class SettingsConnectionChecks
                 check($"changing {field} cancels the test and rejects its result", pending.Token.IsCancellationRequested && State() == changed && State().Enabled);
                 Click("DiscardButton");
             }
+
+            var managing = Begin();
+            Click("CapsuleSettingsButton");
+            var managementState = State();
+            managing.Succeed();
+            await managing.Wait();
+            check("opening capsule management cancels the source test and rejects its result", managing.Token.IsCancellationRequested && State() == managementState);
+            Click("SourcesNav");
 
             Find<TextBox>("NameInput").Text += " discard";
             var discarded = Begin();
@@ -181,6 +188,39 @@ static class SettingsConnectionChecks
             await demo.Wait();
             check("demo connection test does not fetch or leave a loading message", demo.Config is null && State().Enabled && State().Status == State().Feedback && State().Feedback.Contains("演示模式"));
             typeof(App).GetProperty("Monitor")!.SetValue(app, monitor);
+
+            var hone = app.Settings.Providers.First(p => p.Type == ProviderType.Hone);
+            window.SelectProvider(hone.Id);
+            var honeEditors = Find<StackPanel>("HoneConnections").Children.Cast<PulseCapsule.UI.HoneConnectionEditor>().ToArray();
+            ((PasswordBox)honeEditors[0].FindName("SecretInput")).Password = "fixture-wallet";
+            ((PasswordBox)honeEditors[1].FindName("SecretInput")).Password = "fixture-api";
+            var calls = new List<(ProviderType Type, string? Key)>();
+            Func<ProviderConfig, string?, CancellationToken, Task<QuotaSnapshot>> both = (config, key, token) => {
+                calls.Add((config.Type, key));
+                return config.Type == ProviderType.HoneWallet
+                    ? Task.FromException<QuotaSnapshot>(new ProviderException("钱包令牌无效"))
+                    : Task.FromResult(new QuotaSnapshot { ProviderId = config.Id, Used = 5, Currency = "USD" });
+            };
+            await (Task)typeof(SettingsWindow).GetMethod("TestConnectionAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, [both])!;
+            check("Hone test uses each credential and reports wallet failure separately from API success", calls.SequenceEqual(new[] { (ProviderType.HoneWallet, (string?)"fixture-wallet"), (ProviderType.Hone, (string?)"fixture-api") })
+                && State().Feedback.Contains("账户钱包：钱包令牌无效") && State().Feedback.Contains("API key：连接成功") && State().Enabled);
+            Click("DiscardButton");
+            var groupPending = Begin();
+            Find<TextBox>("HoneBaseUrl").Text = "https://changed.example.test";
+            var groupEdited = State();
+            groupPending.Succeed(); await groupPending.Wait();
+            check("editing Hone site cancels the whole test and prevents stale results", groupPending.Token.IsCancellationRequested && State() == groupEdited);
+            Click("DiscardButton");
+            groupPending = Begin();
+            Click("AddHoneApi"); groupEdited = State();
+            groupPending.Fail(new ProviderException("旧钱包结果")); await groupPending.Wait();
+            check("adding a Hone connection invalidates a pending group test", groupPending.Token.IsCancellationRequested && State() == groupEdited);
+            Click("DiscardButton");
+            groupPending = Begin();
+            window.SelectProvider(app.Settings.Providers.First(p => p.Type == ProviderType.Manual).Id);
+            var groupLeft = State();
+            groupPending.Succeed(); await groupPending.Wait();
+            check("leaving Hone ignores its pending result without starting another member", State() == groupLeft && groupPending.Config!.Type == ProviderType.HoneWallet);
 
             var closing = Begin();
             window.Close(); closed = true;

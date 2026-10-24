@@ -24,9 +24,9 @@ settings_path.write_text(json.dumps({
     # Preserve the original clock/quota regression topology; system_capsule_smoke covers the full host.
     'Capsules': [{'Id': 'clock'}, {'Id': 'quota'}, {'Id': 'system', 'Enabled': False}],
     'Providers': [
-        {'Id': 'wallet-a', 'Name': '钱包 A', 'Type': 'HoneWallet', 'LowThreshold': 100},
+        {'Id': 'wallet-a', 'Name': '钱包 A', 'Type': 'Manual', 'LowThreshold': 100},
         {'Id': 'disabled', 'Name': '停用账户', 'Type': 'Manual', 'Enabled': False},
-        {'Id': 'wallet-b', 'Name': '钱包 B', 'Type': 'HoneWallet'},
+        {'Id': 'wallet-b', 'Name': '钱包 B', 'Type': 'Manual'},
         {'Id': 'codex', 'Name': 'Codex', 'Type': 'Codex', 'LowThreshold': 15},
     ],
 }), encoding='utf-8')
@@ -219,12 +219,8 @@ try:
     collapse_panel(main)
     stable('settings apply preserves selected provider by ID', 'Codex')
     settings = open_settings()
-    # WPF's ListBoxItem automation name can be the record's ToString(), while
-    # DisplayMemberPath renders the visible name. Select the known fixture row.
-    settings.child_window(auto_id='ProviderList').get_item(3).select()
-    wait_until(5, .05, lambda: settings.child_window(auto_id='NameInput').get_value() == 'Codex')
-    settings.child_window(auto_id='EnabledCheck').toggle()
-    settings.child_window(auto_id='SaveButton').invoke()
+    settings.child_window(auto_id='CapsuleSettingsButton').select()
+    settings.child_window(auto_id='ModuleEnabled_quota:codex', control_type='CheckBox').toggle()
     close_settings(settings)
     collapse_panel(main)
     expect(clock_prefix)

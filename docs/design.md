@@ -32,11 +32,14 @@ These text sizes guide settings and expanded reading surfaces. Collapsed and tas
 
 ## Settings and navigation
 
-- Use three top-level pages: 数据源 / 胶囊与系统 / 桌面偏好. The source list and account editor scroll independently; keep the account action bar fixed.
+- Use three top-level pages: 数据源 / 胶囊管理 / 桌面偏好. The source list and account editor scroll independently; keep the account action bar fixed.
 - Account changes use explicit Save / Discard / Cancel. Global toggles, ordering and rotation interval save immediately; show saved feedback and restore the prior value when persistence fails. Global preferences must preserve quota backoff and in-flight requests.
 - Make the selected data source unmistakable. Treat adding a source as a separate unsaved task.
-- Structure forms as **identity and enabled state → connection → credentials → refresh and reminders → advanced options**.
-- Keep the source title and enabled state outside the scroll area; preserve a fixed action bar.
+- Structure account forms as **identity → connection → credentials → refresh and reminders → advanced options**. Source enable switches live on 胶囊管理 and save immediately.
+- The source list also uses one Hone entry per normalized site. Show the wallet token and API key on the same page, with a shared site address and separate expandable connection options. Save all member forms together; invalid input or failed credential/configuration staging must retain the original group. Merely opening or saving unchanged forms preserves each Provider ID, raw URL, enable flag and credential. Test each connection independently and label partial failures. Missing connections are added as drafts within the page; clearing/removing a connection states its scope, while removing Hone affects the whole site.
+- Use one compact row and one enable switch per supplier, with the same provider identity and normalized site as quota cards. Hone displays only its supplier name; toggling it saves all member sources together. Keep disabled suppliers reachable. An existing mixed configuration appears enabled if any member is enabled; loading the page does not rewrite those flags. Credentials and monetary values remain source-owned.
+- Place suppliers and built-in modules in one list under their own names (时钟, Hone, Codex, WgetCloud, 硬件监控). Each row has a separate drag handle and enable switch; do not add family rows or up/down buttons. Persist on drop, cancel outside the list or on Escape, and scroll at the list edges during a drag. Keep automatic rotation below the list. Remove hardware sub-option switches from this page while preserving their stored values.
+- Keep the source title outside the scroll area; preserve a fixed action bar.
 - Reveal WgetCloud JSON and other specialized configuration only when relevant. Never hide required connection fields.
 - A changed form must require **Save / Discard / Cancel** on navigation, adding another source, or closing.
 - Do not equate test success with saved configuration, nor save success with verified connectivity.
@@ -83,3 +86,6 @@ Select validation for the changed behavior using the [development guide](develop
 - [Taste Skill](https://github.com/Leonxlnx/taste-skill)
 - [Anthropic Skills](https://github.com/anthropics/skills)
 - [Rx.NET Switch implementation](https://github.com/dotnet/reactive/blob/main/Rx.NET/Source/src/System.Reactive/Linq/Observable/Switch.cs): retain only the current operation's notifications; PulseCapsule implements this locally without adding Rx dependencies.
+- [CommunityToolkit SettingsExpander ItemsSource sample](https://github.com/CommunityToolkit/Windows/blob/main/components/SettingsControls/samples/SettingsExpanderItemsSourceSample.xaml): one account heading with independently configured children. The [template issue #191](https://github.com/CommunityToolkit/Windows/issues/191) concerns WinUI packaged controls, not this WPF application; PulseCapsule uses explicit WPF connection controls and verifies both rendered templates and the published EXE, without adding a WinUI dependency.
+- [Gong WPF DragDrop source](https://github.com/punker76/gong-wpf-dragdrop/blob/develop/src/GongSolutions.WPF.DragDrop/DefaultDropHandler.cs), [PR #362](https://github.com/punker76/gong-wpf-dragdrop/pull/362) and [checkbox issue #342](https://github.com/punker76/gong-wpf-dragdrop/issues/342): correct downward insertion after source removal, preserve selection and separate dragging from toggling. PulseCapsule keeps its native WPF Thumb handler and atomic settings save; no drag library dependency is added.
+- [WPF ToggleButtonAutomationPeer](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationFramework/System/Windows/Automation/Peers/ToggleButtonAutomationPeer.cs): UIA Toggle invokes `OnToggle` directly. Supplier switches therefore handle Checked/Unchecked and ignore their initial bound value, preserving mixed source flags until a user or UIA toggle changes the group state.

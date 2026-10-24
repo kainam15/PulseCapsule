@@ -18,9 +18,35 @@ static class CapsuleChecks
         var oldStore = new SettingsStore(oldDirectory); var oldSettings = new AppSettings(); oldStore.Save(oldSettings);
         check("upgrade keeps the original data directory and provider IDs", DataIdentity.DefaultDirectory(migrationRoot, false) == oldDirectory && new SettingsStore(DataIdentity.DefaultDirectory(migrationRoot, false)).Load().Providers[0].Id == oldSettings.Providers[0].Id);
         check("credential targets and mutex names retain legacy identity", DataIdentity.CredentialTarget("scope", "id") == "QuotaPeek/scope/id" && DataIdentity.MutexName("scope") == @"Local\QuotaPeek-scope");
-        var normalized = CapsuleSelection.Normalize([new() { Id = "system", Enabled = false }, new() { Id = "system" }, new() { Id = "unknown" }]);
-        check("preferences deduplicate and keep declared order", normalized.Select(p => p.Id).SequenceEqual(["system", "clock", "quota"]) && !normalized[0].Enabled);
-        check("all disabled settings retain a usable capsule", CapsuleSelection.Normalize([new() { Id = "clock", Enabled = false }, new() { Id = "quota", Enabled = false }, new() { Id = "system", Enabled = false }]).Any(p => p.Enabled));
+        var normalized = CapsuleSelection.Normalize(new AppSettings { Providers = [], Capsules = [new() { Id = "system", Enabled = false }, new() { Id = "system" }, new() { Id = "unknown" }] });
+        check("preferences deduplicate and keep declared order", normalized.Capsules.Select(p => p.Id).SequenceEqual(["system", "clock"]) && !normalized.Capsules[0].Enabled);
+        check("all disabled settings retain a usable clock module", CapsuleSelection.Normalize(new AppSettings { Providers = [], Capsules = [new() { Id = "clock", Enabled = false }, new() { Id = "quota", Enabled = false }, new() { Id = "system", Enabled = false }] }).Capsules.Any(p => p.Enabled));
+        var api = ProviderConfig.Create(ProviderType.Hone) with { Id = "api" };
+        var wallet = ProviderConfig.Create(ProviderType.HoneWallet) with { Id = "wallet" };
+        var codex = ProviderConfig.Create(ProviderType.Codex) with { Id = "codex" };
+        var legacy = new AppSettings { Version = 1, Providers = [api, codex, wallet], LastCapsuleId = "quota:api", Capsules = [new() { Id = "system", Enabled = false }, new() { Id = "quota" }, new() { Id = "clock" }] };
+        var migrated = CapsuleSelection.Normalize(legacy);
+        check("legacy family position expands to named supplier modules", migrated.Version == 2 && migrated.Capsules.Select(p => p.Id).SequenceEqual(["system", "quota:wallet", "quota:codex", "clock"])
+            && migrated.LastCapsuleId == "quota:wallet" && ReferenceEquals(migrated.Providers, legacy.Providers));
+        var legacyStore = new SettingsStore(Path.Combine(migrationRoot, "legacy-modules"));
+        File.WriteAllText(legacyStore.FilePath, JsonSerializer.Serialize(legacy, SettingsStore.Json));
+        var loadedLegacy = legacyStore.Load();
+        check("version one file requests migration while preserving provider and system settings", legacyStore.NeedsUpgrade && loadedLegacy.Version == 2
+            && JsonSerializer.Serialize(loadedLegacy.Providers) == JsonSerializer.Serialize(legacy.Providers)
+            && JsonSerializer.Serialize(loadedLegacy.System) == JsonSerializer.Serialize(legacy.System));
+        legacyStore.Save(loadedLegacy);
+        check("persisted migration loads as version two with the same module order", legacyStore.Load().Capsules.Select(p => p.Id).SequenceEqual(migrated.Capsules.Select(p => p.Id)) && !legacyStore.NeedsUpgrade);
+        var gated = CapsuleSelection.Normalize(legacy with { Capsules = [new() { Id = "quota", Enabled = false }, new() { Id = "clock" }, new() { Id = "system", Enabled = false }] });
+        check("legacy disabled quota gate migrates to disabled sources without changing identity", gated.Providers.All(p => !p.Enabled) && gated.Providers.Select(p => p.Id).SequenceEqual(legacy.Providers.Select(p => p.Id)) && legacy.Providers.All(p => p.Enabled));
+        var reordered = migrated with { Capsules = [migrated.Capsules[2], migrated.Capsules[3], migrated.Capsules[1], migrated.Capsules[0]] };
+        check("module order supports interleaving suppliers and built-in modules", CapsuleSelection.Modules(reordered).Select(p => p.Name).SequenceEqual(["Codex", "时钟", "Hone", "硬件监控"]));
+        var savedModules = new SettingsStore(Path.Combine(migrationRoot, "modules")); savedModules.Save(reordered);
+        check("module order and supplier identities survive restart", savedModules.Load().Capsules.Select(p => p.Id).SequenceEqual(reordered.Capsules.Select(p => p.Id)) && savedModules.Load().Providers.Select(p => p.Id).SequenceEqual(legacy.Providers.Select(p => p.Id)));
+        var newProvider = ProviderConfig.Create(ProviderType.Manual) with { Id = "new" };
+        var extended = CapsuleSelection.Normalize(reordered with { Providers = [api, codex, wallet, newProvider] });
+        check("new module is appended without reordering existing modules", extended.Capsules.Take(4).Select(p => p.Id).SequenceEqual(reordered.Capsules.Select(p => p.Id)) && extended.Capsules[^1].Id == "quota:new");
+        var removed = CapsuleSelection.Normalize(reordered with { Providers = [codex] });
+        check("removed sources leave no phantom module", removed.Capsules.All(p => p.Id != "quota:wallet") && removed.Providers.Single().Id == "codex");
         check("temperature excludes unreasonable and nonfinite readings", new[] { -1d, 126, double.NaN, double.PositiveInfinity }.All(v => SensorValue.Temperature(v, "test").Value is null));
         check("temperature accepts endpoints 0 and 125", SensorValue.Temperature(0, "test").Value == 0 && SensorValue.Temperature(125, "test").Value == 125);
         check("stopped is a valid zero fan distinct from failure", SensorValue.Fan(0, "test").State == SensorState.Stopped && SensorValue.Fan(-1, "test").Value is null);

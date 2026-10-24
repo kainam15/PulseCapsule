@@ -44,7 +44,7 @@ dotnet run --project tests/PulseCapsule.Checks -c Release -- --ui-checks
 
 ## 候选包与正式部署
 
-普通开发先发布到独立目录：
+应用改动按[协作指南](../AGENTS.md)默认交付到当前正式版本。先发布到独立目录用于验证，检查通过后继续更新正式包：
 
 ```powershell
 .\build.ps1 -Publish -OutputDirectory .artifacts/candidate
@@ -53,7 +53,7 @@ Get-FileHash -LiteralPath .artifacts/candidate/PulseCapsule.exe -Algorithm SHA25
 
 需要显示候选界面时，使用 `--demo --data-dir` 指定本轮独立目录。可见蓝框 Computer Use 需用户明确同意；物理输入测试需空闲、解锁的交互桌面。
 
-`build.ps1 -Publish` 默认写入 `dist`。替换正式包只在部署属于用户授权范围时执行：确认目标 EXE 路径与进程，正常退出目标实例，备份 EXE、配置和数据库并确认备份可读。SQLite 需在应用正常退出后复制，或使用 SQLite backup API 获取一致快照。保护凭据及 Provider ID，不在日志输出秘密。
+`build.ps1 -Publish` 默认写入 `dist`。依据协作指南的默认部署授权或用户本轮限定执行：确认目标 EXE 路径与进程，正常退出目标实例，备份 EXE、配置和数据库并确认备份可读。SQLite 需在应用正常退出后复制，或使用 SQLite backup API 获取一致快照。保护凭据及 Provider ID，不在日志输出秘密。
 
 脚本会拒绝覆盖目标目录中正在运行的 EXE，不会替你停止进程。部署后比对候选与目标 SHA-256，确认实际运行路径，并复核原账户 / 历史和此次变更的交互。发布成功、文件 hash 相同和已部署功能验收是三种不同证据。
 

@@ -21,7 +21,7 @@ public sealed class ProviderCardViewModel
         var ordered = cards.OrderBy(c => c.Config.Type == ProviderType.HoneWallet ? 0 : 1).ToList();
         var first = ordered[0];
         var grouped = ordered.Count > 1;
-        Name = grouped ? ProviderName(first.Config) : first.Name;
+        Name = grouped ? ProviderGrouping.Name(first.Config) : first.Name;
         Scope = grouped
             ? string.Join(" · ", ordered.GroupBy(c => ServiceKind(c.Config.Type))
                 .Select(g => g.Count() == 1 ? g.Key : $"{g.Count()} 个{g.Key}"))
@@ -42,36 +42,16 @@ public sealed class ProviderCardViewModel
         StatusBrush = attention.StatusBrush;
 
         var hasWallet = ordered.Any(c => c.Config.Type == ProviderType.HoneWallet);
+        var configs = ordered.Select(c => c.Config).ToList();
         Services = ordered.Select((card, index) => new ServiceSectionViewModel(card,
-            SectionName(card, ordered), compact: index > 0,
+            ProviderGrouping.ServiceName(card.Config, configs), compact: index > 0,
             showHeader: grouped && (index > 0 || mixed || ordered.Count(c => c.Config.Type == card.Config.Type) > 1),
             hasWallet)).ToList();
     }
 
     public static IReadOnlyList<ProviderCardViewModel> Group(IEnumerable<CardViewModel> cards)
-        => cards.Where(c => c.Config.Enabled).GroupBy(c => GroupKey(c.Config))
+        => cards.Where(c => c.Config.Enabled).GroupBy(c => ProviderGrouping.Key(c.Config))
             .Select(g => new ProviderCardViewModel(g.ToList())).ToList();
-
-    private static (ProviderType Family, string Site) GroupKey(ProviderConfig config)
-    {
-        var family = config.Type == ProviderType.HoneWallet ? ProviderType.Hone : config.Type;
-        if (family == ProviderType.Codex) return (family, "local");
-        if (family is ProviderType.Manual or ProviderType.WgetCloud) return (family, config.Id);
-        // Match the actual fetcher's /v1 normalization; keep tenant paths and ports distinct.
-        var address = family == ProviderType.Custom ? config.Http.Url : HttpQuotaProvider.Endpoint(config.BaseUrl, "");
-        if (!Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != "https"
-            || uri.UserInfo.Length > 0 || uri.Fragment.Length > 0)
-            return (family, config.Id);
-        return (family, uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped)
-            + uri.AbsolutePath.TrimEnd('/') + uri.Query);
-    }
-
-    private static string ProviderName(ProviderConfig config) => config.Type switch
-    {
-        ProviderType.Hone or ProviderType.HoneWallet => "Hone",
-        ProviderType.Relay or ProviderType.Custom => new Uri(config.Type == ProviderType.Custom ? config.Http.Url : config.BaseUrl).Host,
-        _ => ProviderConfig.Create(config.Type).Name
-    };
 
     private static string ServiceKind(ProviderType type) => type switch
     {
@@ -81,20 +61,6 @@ public sealed class ProviderCardViewModel
         ProviderType.WgetCloud => "流量订阅",
         _ => "账户"
     };
-
-    private static string SectionName(CardViewModel card, IReadOnlyList<CardViewModel> cards)
-    {
-        var name = card.Name;
-        if (cards.Count(c => c.Config.Type == card.Config.Type) == 1)
-            name = card.Config.Type switch
-            {
-                ProviderType.HoneWallet when name == "Hone 钱包" => "账户钱包",
-                ProviderType.Hone when name == "Hone API" => "API key",
-                _ => name
-            };
-        var duplicates = cards.Where(c => c.Name == card.Name).ToList();
-        return duplicates.Count > 1 ? name + " " + (duplicates.IndexOf(card) + 1) : name;
-    }
 
     private static int Attention(CardViewModel card) => card.Snapshot?.Status switch
     {

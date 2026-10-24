@@ -289,6 +289,23 @@ var groupCustom = ProviderConfig.Create(ProviderType.Custom);
 Check("custom sources group by their actual HTTP endpoint", ProviderCardViewModel.Group([
     new(groupCustom with { Http = new() { Url = "https://example.test/balance" } }, null, []),
     new(groupCustom with { Id = "second-custom", Http = new() { Url = "https://example.test/balance" } }, null, [])]).Single().Name == "example.test");
+var settingsGroups = ProviderGroup.Group([hone with { Enabled = false }, groupCodexConfig, normalizedWallet.Config]);
+Check("settings group includes disabled API and puts normalized wallet first", settingsGroups.Count == 2
+    && settingsGroups[0].Name == "Hone" && settingsGroups[0].Providers[0].Id == wallet.Id
+    && settingsGroups[0].Enabled && !settingsGroups[0].Providers[1].Enabled && settingsGroups[1].Name == "Codex");
+Check("settings keep supplier sites and tenant paths separate", ProviderGroup.Group([
+    hone, wallet with { BaseUrl = "https://other.example.test" }, wallet with { Id = "tenant-wallet", BaseUrl = "https://hone.vvvv.ee/team" }]).Count == 3);
+var namedSettings = ProviderGroup.Group([hone with { Name = "工作 key" }, wallet with { Name = "团队钱包" }]).Single();
+Check("settings retain custom names and independent credential identities", namedSettings.Name == "Hone"
+    && namedSettings.Providers[0].Name == "团队钱包" && namedSettings.Providers[1].Name == "工作 key"
+    && namedSettings.Providers[0].SecretEnvironment == wallet.SecretEnvironment
+    && namedSettings.Providers[1].SecretEnvironment == hone.SecretEnvironment);
+Check("one supplier retains every key identity even when names match", ProviderGroup.Group([
+    hone, hone with { Id = "second-settings-key" }, wallet]).Single().Providers.Select(p => p.Id).Distinct().Count() == 3);
+Check("a lone Hone source still uses the supplier name and empty lists are supported", ProviderGroup.Group([hone]).Single().Name == "Hone"
+    && ProviderGroup.Group([]).Count == 0);
+Check("fully disabled supplier remains present with an off switch", !ProviderGroup.Group([
+    hone with { Enabled = false }, wallet with { Enabled = false }]).Single().Enabled);
 Throws("HTTP 200 business errors", () => HttpQuotaProvider.ParseRelay(hone, Json("""{"error":{"message":"secret"}}"""), Json("{}"), "USD"));
 var ds = ProviderConfig.Create(ProviderType.DeepSeek);
 var dsResult = HttpQuotaProvider.Parse(ds, Json("""{"is_available":true,"balance_infos":[{"currency":"USD","total_balance":"2.30"},{"currency":"CNY","total_balance":"12.3401"}]}"""));

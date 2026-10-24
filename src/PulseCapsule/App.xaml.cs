@@ -40,6 +40,7 @@ public partial class App : Application
             Store = new(directory);
             Credentials = new(scope);
             var settings = Store.Load();
+            if (Store.NeedsUpgrade) Store.Save(settings);
             if (!demo && Argument("--data-dir") is null) DataIdentity.UpgradeStartupRegistration(settings.StartWithWindows);
             var history = new HistoryStore(directory);
             Monitor = new(settings, Credentials, history, demo);
@@ -50,8 +51,8 @@ public partial class App : Application
             AppDomain.CurrentDomain.ProcessExit += (_, _) => RestoreHardware();
             Monitor.LowQuota += (config, snapshot) => Host.Notify(config.Name + " 额度提醒", snapshot.Kind == QuotaKind.RateWindow
                 ? "剩余额度低于设置的阈值。" : "当前剩余 " + CardViewModel.Money(snapshot.Remaining, snapshot.Currency));
-            if (settings.LastCapsuleId is null && settings.Providers.FirstOrDefault(p => p.Enabled) is { } firstProvider)
-                settings.LastCapsuleId = "quota:" + firstProvider.Id;
+            if (settings.LastCapsuleId is null && ProviderGroup.Group(settings.Providers).FirstOrDefault(p => p.Enabled) is { } firstProvider)
+                settings.LastCapsuleId = firstProvider.Id;
             _ = ConfigureCapsules();
             RenderPath = Argument("--render");
             var window = new MainWindow(this);
@@ -99,6 +100,7 @@ public partial class App : Application
     }
     public void SavePreferences(AppSettings settings)
     {
+        settings = CapsuleSelection.Normalize(settings);
         Action? restoreStartup = null;
         try
         {
@@ -112,22 +114,19 @@ public partial class App : Application
     }
     public void SaveSettings(AppSettings settings)
     {
+        settings = CapsuleSelection.Normalize(settings);
         Store.Save(settings);
         Monitor.Apply(settings);
         _ = ConfigureCapsules();
     }
     private Task ConfigureCapsules()
     {
-        Settings.Capsules = CapsuleSelection.Normalize(Settings.Capsules);
         List<ICapsule> items = [];
-        foreach (var pref in Settings.Capsules.Where(p => p.Enabled))
+        foreach (var module in CapsuleSelection.Modules(Settings).Where(p => p.Enabled))
         {
-            switch (pref.Id)
+            switch (module.Id)
             {
                 case "clock": items.Add(Host.Capsules.OfType<ClockCapsule>().FirstOrDefault() ?? new ClockCapsule()); break;
-                case "quota": items.AddRange(Settings.Providers.Where(p => p.Enabled).Select(p =>
-                    Host.Capsules.OfType<QuotaCapsule>().FirstOrDefault(c => c.Matches(p))
-                    ?? new QuotaCapsule(p, Monitor, OpenProviderSettings, DisableProvider, SetCardDetails))); break;
                 case "system":
                     try
                     {
@@ -135,6 +134,10 @@ public partial class App : Application
                         system.Configure(Settings.System); items.Add(system);
                     }
                     catch { items.Add(new UnavailableSystemCapsule()); }
+                    break;
+                default:
+                    items.Add(Host.Capsules.OfType<QuotaCapsule>().FirstOrDefault(c => c.Matches(module))
+                        ?? new QuotaCapsule(module, Monitor, OpenProviderSettings, DisableProvider, SetCardDetails));
                     break;
             }
         }
@@ -144,7 +147,7 @@ public partial class App : Application
     private sealed class UnavailableSystemCapsule : PulseCapsule.Capsules.CapsuleBase
     {
         public override string Id => "system";
-        public override string Title => "System";
+        public override string Title => CapsuleSelection.SystemName;
         protected override Task RefreshCore(bool force) { PrimaryText = "CPU unavailable"; Status = CapsuleStatus.Unavailable; Tooltip = "硬件监控不可用，其他 Capsule 继续运行。"; return Task.CompletedTask; }
     }
     public static void OpenWebsite(string url)

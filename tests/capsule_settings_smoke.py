@@ -94,11 +94,12 @@ try:
         preferences.child_window(auto_id='CapsuleSettingsButton').wait('visible', timeout=10)
         preferences.child_window(auto_id='CapsuleSettingsButton').select()
         dialog = Desktop(backend='uia').window(handle=preferences.handle)
-        dialog.child_window(auto_id='CapsuleList').get_item(2).select()
-        dialog.child_window(title='↑ 上移', control_type='Button').invoke()
-        dialog.child_window(title='↑ 上移', control_type='Button').invoke()
-        wait_until(5, .1, lambda: settings()['Capsules'][0]['Id'] == 'system')
-        check('reordering persists and preserves current Capsule', settings()['LastCapsuleId'] == 'system')
+        modules = dialog.child_window(auto_id='ModuleList')
+        check('management lists individual modules with drag handles', len(modules.children(control_type='ListItem')) == 3
+              and len([x for x in modules.descendants() if x.element_info.automation_id.startswith('ReorderModule_')]) == 3)
+        check('legacy order migrates to module IDs and preserves selection', [x['Id'] for x in settings()['Capsules']] == ['clock', 'quota:settings-fixture', 'system'] and settings()['LastCapsuleId'] == 'system')
+        check('up/down buttons and hardware preference switches are absent', not dialog.child_window(title='↑ 上移').exists()
+              and not dialog.child_window(title='↓ 下移').exists() and not dialog.child_window(auto_id='TemperatureCheck').exists())
         dialog.child_window(auto_id='RotateSeconds').select('5')
         dialog.child_window(auto_id='RotateCheck').toggle()
         for expected, prefix in [('clock', time.strftime('%Y-%m-%d')), ('quota:settings-fixture', 'Quota fixture'), ('system', 'CPU')]:
